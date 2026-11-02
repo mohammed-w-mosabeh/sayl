@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Node / Tauri
+node_modules/
+desktop/out/
+desktop/.next/
+desktop/src-tauri/target/
+
+# Secrets and runtime state (never commit)
+.env
+.env.*
+*.pem
+*.key
+*.p12
+token
+*.session
+cookies*.txt
+ca/
+
+# Test artifacts and downloads
+downloads/
+tests/fixtures/large/
+*.iso
+*.mp4
+*.mkv
+*.zip
+*.part
+*.aria2
+
+# Packaging output
+*.AppImage
+*.deb
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Claude Code per-machine settings
+.claude/settings.local.json

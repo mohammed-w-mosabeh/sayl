@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(gh repo create:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh auth status:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(uv:*)",
+      "Bash(pnpm:*)",
+      "Bash(ruff:*)",
+      "Bash(mypy:*)",
+      "Bash(pytest:*)",
+      "Bash(aria2c:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(yt-dlp:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push origin +main:*)",
+      "Bash(git reset --hard origin/main:*)",
+      "Bash(git config --global:*)",
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ],
+    "ask": [
+      "Bash(sudo:*)",
+      "Bash(pkexec:*)",
+      "Bash(gsettings set:*)",
+      "Bash(certutil:*)",
+      "Bash(rm -rf:*)"
+    ]
+  }
+}
