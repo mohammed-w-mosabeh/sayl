@@ -12,7 +12,7 @@ jobs:
   python:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -31,7 +31,7 @@ jobs:
         browser: [chromium, firefox]
         protocol: [http1, http2]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -56,7 +56,7 @@ jobs:
   desktop:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 11
