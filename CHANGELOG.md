@@ -4,3 +4,4 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 - Project specification, roadmap, and Claude Code instructions.
+- Phase 0 scaffold: uv project, ruff, mypy strict, pytest, pre-commit, CI, pnpm workspace placeholder, and `sayl doctor`.

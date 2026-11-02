@@ -1,0 +1,54 @@
+[project]
+name = "sayl"
+version = "0.0.0"
+description = "IDM-class download manager for Linux that captures browser downloads without an extension."
+readme = "docs/SPEC.md"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+dependencies = [
+    "rich>=13.9",
+    "typer>=0.15",
+]
+
+[project.scripts]
+sayl = "cli.main:app"
+sayld = "daemon.main:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.14",
+    "pre-commit>=4.0",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.9",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["daemon", "cli"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["desktop"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "S", "ASYNC", "C4", "PTH", "RUF", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["daemon", "cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=daemon --cov=cli --cov-report=term-missing --cov-fail-under=80"
+
+[tool.coverage.run]
+branch = true

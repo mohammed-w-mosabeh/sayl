@@ -3,11 +3,11 @@
 Claude Code updates these checkboxes at the end of each phase. Acceptance criteria live in `SPEC.md`.
 
 ## Phase 0 — Scaffold
-- [ ] git repo, `.gitignore`, initial commit, GitHub remote (if `gh` is authenticated)
-- [ ] uv project, ruff, mypy --strict, pytest, pre-commit
-- [ ] pnpm workspace placeholder for `desktop/`
-- [ ] GitHub Actions: lint + typecheck + tests
-- [ ] `sayl doctor` (aria2c, ffmpeg, JS runtime for yt-dlp, certutil, wl-paste/xclip, session type)
+- [x] git repo, `.gitignore`, initial commit, GitHub remote (if `gh` is authenticated)
+- [x] uv project, ruff, mypy --strict, pytest, pre-commit
+- [x] pnpm workspace placeholder for `desktop/`
+- [x] GitHub Actions: lint + typecheck + tests
+- [x] `sayl doctor` (aria2c, ffmpeg, JS runtime for yt-dlp, certutil, wl-paste/xclip, session type)
 
 ## Phase 0.5 — Proof of concept (`poc/`)
 - [ ] mitmproxy addon detecting downloads in `responseheaders`
