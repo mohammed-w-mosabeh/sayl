@@ -12,13 +12,18 @@ const body = Buffer.alloc(SIZE);
 for (let i = 0; i < SIZE; i += 4) body.writeUInt32LE(i >>> 0, i);
 const sha256 = createHash('sha256').update(body).digest('hex');
 
-const stats = { sha256, hits: {}, completed: {}, aborted: {}, bytesSent: {} };
+const stats = { sha256, hits: {}, ranged: {}, completed: {}, aborted: {}, bytesSent: {} };
+const ONE_TIME = '/one/k9Xq2vLw7Rt4Zp1Bn6Ys/once.bin';
+const VALIDATOR = '"lab-v1"';
 const bump = (map, key, by = 1) => { map[key] = (map[key] ?? 0) + by; };
 
 const PAGE = `<!doctype html><title>lab</title>
 <a id="range" href="/range.bin">range</a>
 <a id="once" href="/once.bin?token=abc">once</a>
 <a id="noranges" href="/noranges.bin">noranges</a>
+<a id="accel" href="/accel.bin">accel</a>
+<a id="onetime" href="${ONE_TIME}">onetime</a>
+<a id="session" href="/session.bin">session</a>
 <a id="next" href="/next">next</a>
 <form id="post" method="post" action="/post.bin"><button id="postbtn">post</button></form>`;
 
@@ -45,6 +50,7 @@ function handler(req, res) {
   const url = new URL(req.url, 'https://lab');
   const key = `${req.method} ${url.pathname}`;
   bump(stats.hits, key);
+  if (req.headers.range) bump(stats.ranged, key);
   const attachment = { 'content-type': 'application/octet-stream',
     'content-disposition': `attachment; filename="${url.pathname.slice(1)}"` };
   if (url.pathname === '/stats') {
@@ -52,8 +58,30 @@ function handler(req, res) {
     return res.end(JSON.stringify(stats));
   }
   if (url.pathname === '/page' || url.pathname === '/next') {
-    res.writeHead(200, { 'content-type': 'text/html' });
+    res.writeHead(200, { 'content-type': 'text/html', 'set-cookie': 'sid=lab; Path=/; Secure' });
     return res.end(url.pathname === '/page' ? PAGE : '<!doctype html><title>next</title>ok');
+  }
+  if (url.pathname === ONE_TIME && stats.hits[key] > 1) {
+    res.writeHead(410);
+    return res.end('used');
+  }
+  if (url.pathname === '/session.bin' && (req.headers.range || !/sid=lab/.test(req.headers.cookie ?? ''))) {
+    res.writeHead(403);
+    return res.end('session bound');
+  }
+  if (url.pathname === ONE_TIME || url.pathname === '/session.bin' || url.pathname === '/accel.bin') {
+    Object.assign(attachment, { 'accept-ranges': 'bytes', etag: VALIDATOR,
+      'content-disposition': `attachment; filename="${url.pathname.split('/').pop()}"` });
+    const match = /bytes=(\d+)-(\d*)/.exec(req.headers.range ?? '');
+    if (match) {
+      const start = Number(match[1]);
+      const end = match[2] ? Math.min(Number(match[2]), SIZE - 1) : SIZE - 1;
+      res.writeHead(206, { ...attachment, 'content-range': `bytes ${start}-${end}/${SIZE}`,
+        'content-length': end - start + 1 });
+      return slowSend(req, res, key, start, end);
+    }
+    res.writeHead(200, { ...attachment, 'content-length': SIZE });
+    return slowSend(req, res, key, 0, SIZE - 1);
   }
   if (url.pathname === '/range.bin') {
     const match = /bytes=(\d+)-(\d*)/.exec(req.headers.range ?? '');

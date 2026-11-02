@@ -40,6 +40,9 @@ uv sync                      # install Python deps
 uv run pytest                # tests
 uv run ruff check . && uv run ruff format --check .
 uv run mypy daemon cli
+uv run python poc/lab/run_matrix.py chromium http2 --target daemon   # browser lab (chromium|firefox, http1|http2, poc|daemon); Chromium needs PLAYWRIGHT_CORE
+uv run python -m daemon.openapi > docs/openapi.json                  # export the OpenAPI schema
+uv run python poc/lab/real_youtube.py                                # real yt-dlp test: 1080p video + 5 playlist items, 2 MB/s limit
 uv run sayld                 # run the daemon
 uv run sayl doctor           # check aria2c, ffmpeg, JS runtime, permissions
 cd desktop && pnpm install && pnpm tauri dev

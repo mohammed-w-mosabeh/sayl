@@ -1,6 +1,8 @@
 """Run the single-use lab matrix for one browser and protocol, and check what the origin saw.
 
-Usage: uv run python poc/lab/run_matrix.py <chromium|firefox> <http1|http2> [--state DIR]
+Usage: uv run python poc/lab/run_matrix.py <chromium|firefox> <http1|http2>
+           [--target poc|daemon] [--state DIR]
+poc checks the addon's own handoff. daemon runs a real sayld and checks the attach API.
 Exits non-zero only when a check fails. Chromium needs PLAYWRIGHT_CORE; see chromium.mjs.
 """
 
@@ -23,15 +25,20 @@ LAB = Path(__file__).parent
 POC = LAB.parent
 ORIGIN_PORT = 8443
 PROXY_PORT = 8899
+DAEMON_PORT = 6981
+ONE_TIME_KEY = "GET /one/k9Xq2vLw7Rt4Zp1Bn6Ys/once.bin"
 EXPECTED_FILES = {"noranges.bin", "once.bin", "post.bin", "range.bin"}
+DAEMON_FILES = {"accel.bin", "once.bin", "session.bin"}
 FINISH_TIMEOUT = 60.0
 
 
-def _spawn(command: list[str], log: Path) -> subprocess.Popen[bytes]:
+def _spawn(
+    command: list[str], log: Path, env: dict[str, str] | None = None
+) -> subprocess.Popen[bytes]:
     """Each service gets its own process group, so stopping it also stops its children."""
     with log.open("wb") as stream:
         return subprocess.Popen(  # noqa: S603 - argument list built in this file
-            command, stdout=stream, stderr=subprocess.STDOUT, start_new_session=True
+            command, stdout=stream, stderr=subprocess.STDOUT, start_new_session=True, env=env
         )
 
 
@@ -91,8 +98,8 @@ def _certificate(state: Path) -> tuple[Path, Path]:
     return key, cert
 
 
-def _driver(browser: str) -> list[str]:
-    steps = str(LAB / "steps-matrix.json")
+def _driver(browser: str, steps_file: str) -> list[str]:
+    steps = str(LAB / steps_file)
     if browser == "chromium":
         node = shutil.which("node")
         if node is None:
@@ -169,7 +176,85 @@ def _check(state: Path, driver_log: Path, stats: dict[str, Any], files: list[Pat
     return problems
 
 
-def run(browser: str, protocol: str, state: Path) -> int:
+def _daemon_env(state: Path, cert: Path) -> dict[str, str]:
+    home = state / "home"
+    config = home / ".config/sayl"
+    config.mkdir(parents=True, exist_ok=True)
+    (config / "config.toml").write_text(
+        f"port = {DAEMON_PORT}\nconnections = 4\naccelerate_min_bytes = 1048576\n"
+        f'download_dir = "{state / "out"}"\n'
+    )
+    env = {key: value for key, value in os.environ.items() if not key.startswith("XDG_")}
+    return {
+        **env,
+        "HOME": str(home),
+        "SSL_CERT_FILE": str(cert),
+        "PYTHON_KEYRING_BACKEND": "keyring.backends.fail.Keyring",
+    }
+
+
+def _daemon_get(token: str, path: str) -> Any:
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{DAEMON_PORT}{path}", headers={"Authorization": f"Bearer {token}"}
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
+        return json.load(response)
+
+
+def _wait_for_daemon(state: Path) -> str:
+    token_file = state / "home/.config/sayl/token"
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        try:
+            token = token_file.read_text()
+            _daemon_get(token, "/settings")
+        except OSError:
+            time.sleep(0.1)
+        else:
+            return token
+    raise SystemExit("sayld did not start")
+
+
+def _wait_for_rows(token: str) -> list[dict[str, Any]]:
+    deadline = time.monotonic() + FINISH_TIMEOUT
+    rows: list[dict[str, Any]] = []
+    while time.monotonic() < deadline:
+        rows = _daemon_get(token, "/downloads")
+        finished = ("completed", "failed", "needs_refresh")
+        if len(rows) == len(DAEMON_FILES) and all(r["status"] in finished for r in rows):
+            return rows
+        time.sleep(0.25)
+    return rows
+
+
+def _check_daemon(
+    state: Path, driver_log: Path, stats: dict[str, Any], rows: list[dict[str, Any]]
+) -> list[str]:
+    problems = []
+    if {row["filename"] for row in rows} != DAEMON_FILES:
+        problems.append(f"downloads {sorted(row['filename'] for row in rows)}")
+    for row in rows:
+        if row["status"] != "completed":
+            problems.append(f"{row['filename']}: {row['status']} {row['error']}")
+            continue
+        data = (state / "out" / row["filename"]).read_bytes()
+        if hashlib.sha256(data).hexdigest() != stats["sha256"]:
+            problems.append(f"{row['filename']} does not match the origin hash")
+    if stats["hits"].get(ONE_TIME_KEY) != 1:
+        problems.append(f"one-time link hits: {stats['hits'].get(ONE_TIME_KEY)}, expected 1")
+    if not stats["ranged"].get("GET /accel.bin"):
+        problems.append("the Range-capable link was not accelerated")
+    if stats["ranged"].get("GET /session.bin") != 1:
+        problems.append(f"session Range requests: {stats['ranged'].get('GET /session.bin')}")
+    if stats["hits"].get("GET /session.bin", 0) - stats["ranged"].get("GET /session.bin", 0) != 1:
+        problems.append("the session link was not fetched exactly once with its cookie")
+    browser_downloads = _browser_downloads(driver_log)
+    if browser_downloads != []:
+        problems.append(f"browser downloads: {browser_downloads}, expected none")
+    return problems
+
+
+def run(browser: str, protocol: str, state: Path, target: str = "poc") -> int:
     state.mkdir(parents=True, exist_ok=True)
     key, cert = _certificate(state)
     node = shutil.which("node")
@@ -178,22 +263,53 @@ def run(browser: str, protocol: str, state: Path) -> int:
     proxy = [sys.executable, str(POC / "run.py"), f"--port={PROXY_PORT}", f"--state={state}"]
     proxy += ["--insecure-upstream", *(["--http1"] if protocol == "http1" else [])]
     origin_args = [node, str(LAB / "origin.mjs"), str(ORIGIN_PORT), str(key), str(cert)]
-    services = [_spawn(origin_args, state / "origin.log"), _spawn(proxy, state / "proxy.log")]
+    services = [_spawn(origin_args, state / "origin.log")]
     driver_log = state / "driver.log"
+    steps = "steps-daemon.json" if target == "daemon" else "steps-matrix.json"
     try:
+        proxy_env = None
+        if target == "daemon":
+            daemon = [sys.executable, "-c", "from daemon.main import main; main()"]
+            services.append(_spawn(daemon, state / "daemon.log", _daemon_env(state, cert)))
+            proxy_env = {
+                **os.environ,
+                "SAYL_POC_DAEMON_URL": f"http://127.0.0.1:{DAEMON_PORT}",
+                "SAYL_POC_DAEMON_TOKEN": _wait_for_daemon(state),
+            }
+        services.append(_spawn(proxy, state / "proxy.log", proxy_env))
         time.sleep(3)
         with driver_log.open("wb") as stream:
             subprocess.run(  # noqa: S603 - argument list built in this file
-                _driver(browser), stdout=stream, stderr=subprocess.STDOUT, timeout=120, check=True
+                _driver(browser, steps),
+                stdout=stream,
+                stderr=subprocess.STDOUT,
+                timeout=120,
+                check=True,
             )
-        files = _wait_for_files(state)
-        stats = _stats()
-        problems = _check(state, driver_log, stats, files)
+        if target == "daemon":
+            rows = _wait_for_rows(proxy_env["SAYL_POC_DAEMON_TOKEN"])  # type: ignore[index]
+            stats = _stats()
+            problems = _check_daemon(state, driver_log, stats, rows)
+        else:
+            files = _wait_for_files(state)
+            stats = _stats()
+            problems = _check(state, driver_log, stats, files)
     finally:
         for service in reversed(services):
             _stop(service)
     problems += [f"process group {pid} survived shutdown" for pid in _leftovers(services)]
-    print(json.dumps({"browser": browser, "protocol": protocol, "hits": stats["hits"]}))
+    print(
+        json.dumps(
+            {
+                "browser": browser,
+                "protocol": protocol,
+                "target": target,
+                "hits": stats["hits"],
+                "ranged": stats["ranged"],
+                "ok": not problems,
+            }
+        )
+    )
     for problem in problems:
         print(f"FAIL {problem}", file=sys.stderr)
     return 1 if problems else 0
@@ -203,12 +319,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("browser", choices=["chromium", "firefox"])
     parser.add_argument("protocol", choices=["http1", "http2"])
+    parser.add_argument("--target", choices=["poc", "daemon"], default="poc")
     parser.add_argument("--state", type=Path)
     args = parser.parse_args()
     if args.state is not None:
-        return run(args.browser, args.protocol, args.state.resolve())
+        return run(args.browser, args.protocol, args.state.resolve(), args.target)
     with tempfile.TemporaryDirectory(prefix="sayl-lab-") as state:
-        return run(args.browser, args.protocol, Path(state))
+        return run(args.browser, args.protocol, Path(state), args.target)
 
 
 if __name__ == "__main__":

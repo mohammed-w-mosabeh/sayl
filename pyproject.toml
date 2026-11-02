@@ -6,8 +6,18 @@ readme = "docs/SPEC.md"
 requires-python = ">=3.12,<3.13"
 license = "MIT"
 dependencies = [
+    "alembic>=1.14",
+    "cryptography>=43",
+    "fastapi>=0.115",
+    "httpx>=0.27",
+    "keyring>=25",
     "rich>=13.9",
+    "sqlmodel>=0.0.22",
     "typer>=0.15",
+    "uvicorn>=0.32",
+    "websockets>=13",
+    "yt-dlp>=2026.10.26",
+    "yt-dlp-ejs>=0.8.0",
 ]
 
 [project.scripts]
@@ -19,6 +29,7 @@ dev = [
     "mypy>=1.14",
     "pre-commit>=4.0",
     "pytest>=8.3",
+    "pytest-asyncio>=0.24",
     "pytest-cov>=6.0",
     "ruff>=0.9",
 ]
@@ -47,7 +58,7 @@ extend-exclude = ["desktop"]
 select = ["E", "F", "W", "I", "UP", "B", "S", "ASYNC", "C4", "PTH", "RUF", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+"tests/**" = ["S101", "ASYNC110", "ASYNC240"]
 "poc/test_*.py" = ["S101"]
 "poc/addon.py" = ["S101"]
 
@@ -56,8 +67,13 @@ python_version = "3.12"
 strict = true
 files = ["daemon", "cli"]
 
+[[tool.mypy.overrides]]
+module = ["yt_dlp", "yt_dlp.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
 addopts = "--cov=daemon --cov=cli --cov-report=term-missing --cov-fail-under=80"
 
 [tool.coverage.run]

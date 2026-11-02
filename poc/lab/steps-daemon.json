@@ -1,0 +1,15 @@
+[
+  {"goto": "https://127.0.0.1:8443/page"},
+  {"click": "#accel"},
+  {"wait": 300},
+  {"goto": "https://127.0.0.1:8443/next"},
+  {"wait": 4000},
+  {"goto": "https://127.0.0.1:8443/page"},
+  {"click": "#onetime"},
+  {"wait": 300},
+  {"goto": "https://127.0.0.1:8443/next"},
+  {"goto": "https://127.0.0.1:8443/page"},
+  {"click": "#session"},
+  {"wait": 300},
+  {"quit": true}
+]

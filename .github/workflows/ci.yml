@@ -16,11 +16,14 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+      - run: sudo apt-get update && sudo apt-get install --yes aria2
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest
+        env:
+          SAYL_LARGE_TEST: "1"
 
   capture-lab:
     runs-on: ubuntu-24.04
@@ -30,6 +33,7 @@ jobs:
       matrix:
         browser: [chromium, firefox]
         protocol: [http1, http2]
+        target: [poc, daemon]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -51,7 +55,9 @@ jobs:
         uses: browser-actions/setup-firefox@v1
         with:
           firefox-version: latest-esr
-      - run: uv run python poc/lab/run_matrix.py ${{ matrix.browser }} ${{ matrix.protocol }}
+      - run: >-
+          uv run python poc/lab/run_matrix.py ${{ matrix.browser }} ${{ matrix.protocol }}
+          --target ${{ matrix.target }}
 
   desktop:
     runs-on: ubuntu-24.04

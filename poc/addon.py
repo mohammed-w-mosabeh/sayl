@@ -9,7 +9,7 @@ import threading
 import time
 import urllib.request
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import AsyncIterator, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -19,6 +19,7 @@ from mitmproxy import connection, http
 sys.path.insert(0, str(Path(__file__).parent))
 
 import detect
+import httpx
 
 from daemon.capture import mitm_adapter as detach
 
@@ -27,6 +28,9 @@ detach.install()
 STATE_DIR = Path(os.environ["SAYL_POC_STATE"])
 ARIA2_SECRET = os.environ["SAYL_POC_ARIA2_SECRET"]
 ARIA2_URL = os.environ["SAYL_POC_ARIA2_URL"]
+DAEMON_URL = os.environ.get("SAYL_POC_DAEMON_URL", "")
+DAEMON_TOKEN = os.environ.get("SAYL_POC_DAEMON_TOKEN", "")
+SPOOL_CHUNK = 256 * 1024
 DOWNLOAD_DIR = STATE_DIR / "downloads"
 EVENTS = STATE_DIR / "events.jsonl"
 FORWARDED_HEADERS = ("cookie", "user-agent", "referer", "authorization")
@@ -57,6 +61,70 @@ def add_to_aria2(url: str, filename: str, headers: list[str]) -> str:
         return str(json.load(response)["result"])
 
 
+class DaemonBridge:
+    """Thin sayl-capture stand-in: registers a response, then uploads its body to the daemon.
+
+    mitmproxy's stream callback cannot apply back-pressure, so bytes the daemon is not ready for
+    wait in a spool file. The production addon needs real back-pressure instead (Phase 5).
+    """
+
+    def __init__(self) -> None:
+        self.client = httpx.AsyncClient(
+            base_url=DAEMON_URL,
+            headers={"Authorization": f"Bearer {DAEMON_TOKEN}"},
+            timeout=httpx.Timeout(30, read=None, write=None),
+        )
+        self.uploads: set[asyncio.Task[None]] = set()
+
+    async def attach(self, flow: http.HTTPFlow) -> str:
+        request, response = flow.request, flow.response
+        assert response is not None
+        reply = await self.client.post(
+            "/downloads/attach",
+            json={
+                "url": request.pretty_url,
+                "method": request.method,
+                "status": response.status_code,
+                "request_headers": {
+                    name: request.headers[name]
+                    for name in FORWARDED_HEADERS
+                    if name in request.headers
+                },
+                "response_headers": dict(response.headers),
+            },
+        )
+        reply.raise_for_status()
+        return str(reply.json()["id"])
+
+    def upload(self, download_id: str, tee: "FileTee") -> None:
+        task = asyncio.create_task(self._upload(download_id, tee))
+        self.uploads.add(task)
+        task.add_done_callback(self.uploads.discard)
+
+    async def _upload(self, download_id: str, tee: "FileTee") -> None:
+        try:
+            reply = await self.client.put(f"/downloads/{download_id}/stream", content=_spool(tee))
+            log_event("daemon-finished", tee.url, status=reply.json().get("status"))
+        except httpx.HTTPError as error:
+            log_event("daemon-upload-failed", tee.url, error=type(error).__name__)
+        finally:
+            tee.path.unlink(missing_ok=True)
+
+
+async def _spool(tee: "FileTee") -> AsyncIterator[bytes]:
+    with tee.path.open("rb") as stream:
+        while True:
+            data = await asyncio.to_thread(stream.read, SPOOL_CHUNK)
+            if data:
+                yield data
+            elif not tee.closed.is_set():
+                await asyncio.sleep(0.02)
+            elif tee.finished:
+                return
+            else:
+                raise ConnectionError("the upstream connection failed")
+
+
 class FileTee:
     """Writes stream-through chunks on a thread so the event loop never touches the disk."""
 
@@ -65,6 +133,8 @@ class FileTee:
         self.filename = filename
         self.expected = expected
         self.path = DOWNLOAD_DIR / f"{uuid.uuid4().hex[:8]}-{filename}"
+        if DAEMON_URL:
+            self.path.touch()  # The uploader opens it before the first chunk arrives.
         self.queue: queue.SimpleQueue[bytes | None] = queue.SimpleQueue()
         self.written = 0
         self.finished = False
@@ -116,6 +186,7 @@ class SaylPoc:
     def __init__(self) -> None:
         self.tees: dict[str, FileTee] = {}
         self.by_client: dict[str, list[FileTee]] = {}
+        self.bridge = DaemonBridge() if DAEMON_URL else None
 
     async def responseheaders(self, flow: http.HTTPFlow) -> None:
         response = flow.response
@@ -139,6 +210,9 @@ class SaylPoc:
         if not detect.is_download(summary, headers):
             return
         filename = detect.filename_for(url, headers)
+        if self.bridge is not None:
+            await self._hand_to_daemon(flow, self.bridge, url, filename)
+            return
         strategy = detect.choose_strategy(summary, headers)
         expected = int(headers.get("content-length", "0") or 0)
         log_event(
@@ -167,6 +241,24 @@ class SaylPoc:
             self.tees[flow.id] = tee
             self.by_client.setdefault(flow.client_conn.id, []).append(tee)
             _swallow(flow, detach.DETACH, tee)
+
+    async def _hand_to_daemon(
+        self, flow: http.HTTPFlow, bridge: DaemonBridge, url: str, filename: str
+    ) -> None:
+        """Stream first: the response already open becomes the download. Nothing is re-requested."""
+        try:
+            download_id = await bridge.attach(flow)
+        except httpx.HTTPError as error:
+            log_event("daemon-attach-failed", url, error=type(error).__name__)
+            return  # Leave the download to the browser rather than lose it.
+        assert flow.response is not None
+        expected = int(flow.response.headers.get("content-length", "0") or 0)
+        log_event("attached", url, file=filename, bytes=expected, http=flow.response.http_version)
+        tee = FileTee(url, filename, expected)
+        self.tees[flow.id] = tee
+        self.by_client.setdefault(flow.client_conn.id, []).append(tee)
+        bridge.upload(download_id, tee)
+        _swallow(flow, detach.DETACH, tee)
 
     def error(self, flow: http.HTTPFlow) -> None:
         tee = self.tees.pop(flow.id, None)

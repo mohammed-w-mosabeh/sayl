@@ -15,6 +15,10 @@ User experience target: the user clicks "Download" in any browser exactly as usu
 5. The daemon owns all state. UI, CLI, proxy, and clipboard watcher are clients of the daemon API. Closing the UI never stops downloads.
 6. XDG paths: config `~/.config/sayl/config.toml`, data `~/.local/share/sayl/`, cache `~/.cache/sayl/`, default download dir from `xdg-user-dir DOWNLOAD`.
 
+## Documented deviations
+
+- **Header key without a keyring.** The key for `headers_enc` belongs in the system keyring. When no keyring is available, such as in a headless session, it falls back to a mode 0600 file in the data directory. This is weaker: anyone who can read the file can read saved cookies. `sayl doctor` warns about it, and the daemon logs it once at startup.
+
 ## Known limits (document them in the README; do not try to "solve" them)
 
 - Downloads assembled in the page by JavaScript (`blob:` / `data:` URLs, e.g. MEGA) never cross the network as a file and cannot be captured. The browser keeps handling them.
@@ -55,7 +59,7 @@ sayl/
 
 ## Data model (minimum)
 
-- `Download(id, url, final_url, page_url, filename, dest_dir, category_id, engine, engine_ref, status[queued|probing|active|paused|completed|failed|canceled], total_bytes, done_bytes, speed, eta, connections, priority, headers_enc, checksum_algo, checksum_expected, checksum_ok, error, created_at, started_at, finished_at)` — `headers_enc` is encrypted at rest with a key held in the system keyring.
+- `Download(id, url, final_url, page_url, filename, dest_dir, category_id, engine, engine_ref, status[queued|probing|active|paused|completed|failed|canceled|needs_refresh], total_bytes, done_bytes, speed, eta, connections, priority, headers_enc, checksum_algo, checksum_expected, checksum_ok, error, created_at, started_at, finished_at)` — `headers_enc` is encrypted at rest with a key held in the system keyring.
 - `Category(id, name, extensions, mime_prefixes, dest_dir, icon)`
 - `Schedule(id, name, cron, action[start_queue|stop_queue|speed_limit], params_json, post_action[none|shutdown|suspend|command])`
 - `Setting(key, value_json)`
@@ -64,7 +68,7 @@ sayl/
 
 ## API (FastAPI; every route requires the bearer token)
 
-`POST /downloads` (url, headers?, cookies?, referer?, page_url?, filename?, dest_dir?, category?, format_id?, start_paused?) · `POST /downloads/attach` (url, method, request_headers, response_headers, status, page_url?, filename?; creates a HybridEngine download and returns its id, with no request to the origin) · `PUT /downloads/{id}/stream` (raw response body from offset 0, chunked, with back-pressure; used once, and an early close fails the stream) · `GET /downloads` · `GET|PATCH|DELETE /downloads/{id}` · `POST /downloads/{id}/(pause|resume|refresh-url|verify)` · `POST /probe` · `GET|PUT /settings` · CRUD `/categories`, `/schedules` · `POST /batch` (list, or pattern like `file[001-100].jpg`) · `POST /grab-site` · `WS /ws` (events: `download.added|progress|completed|failed`, `capture.detected`, `clipboard.detected`). Publish the OpenAPI schema and generate the TypeScript client from it. Reject requests whose `Origin` header is a web origin.
+`POST /downloads` (url, headers?, cookies?, referer?, page_url?, filename?, dest_dir?, category?, format_id?, start_paused?, speed_limit?, audio_only?, subtitles?, playlist_items?, cookies_file?, cookies_from_browser?; the last five are YtDlpEngine options: extract audio only, languages to embed, items such as `1,3,5-7`, a cookies.txt path, a browser to read cookies from) · `POST /downloads/attach` (url, method, request_headers, response_headers, status, page_url?, filename?; creates a HybridEngine download and returns its id, with no request to the origin) · `PUT /downloads/{id}/stream` (raw response body from offset 0, chunked, with back-pressure; used once, and an early close fails the stream) · `GET /downloads` · `GET|PATCH|DELETE /downloads/{id}` · `POST /downloads/{id}/(pause|resume|refresh-url|verify)` (`refresh-url` takes url and optional headers) · `POST /probe` · `GET|PUT /settings` · CRUD `/categories`, `/schedules` · `POST /batch` (list, or pattern like `file[001-100].jpg`) · `POST /grab-site` · `WS /ws` (events: `download.added|progress|completed|failed|needs_refresh`, `capture.detected`, `clipboard.detected`). Publish the OpenAPI schema and generate the TypeScript client from it. Reject requests whose `Origin` header is a web origin.
 
 ## Capture (no extension)
 
@@ -86,8 +90,9 @@ GNOME via `gsettings org.gnome.system.proxy`, KDE via `kwriteconfig5/6`, plus pr
   3. **Validate every extra connection.** Each response must be `206` with a matching `Content-Range` and total size, and the same `ETag`/`Last-Modified` as the original response.
   4. **Fall back, never fail.** On `401`, `403`, `410`, a changed validator, or any non-206 response: cancel all range workers, discard their unverified bytes, and finish on the original stream. The original stream stays open until the segment map shows the file is complete, so this is always possible. Record the host in `HostPolicy` so later downloads from it skip acceleration.
   5. **Single-use hint.** `looks_single_use` checks signed query parameters and high-entropy path segments. It only skips acceleration. It never decides correctness, and never picks a different way to start. A link it misses may receive one rejected Range request, then falls back under rule 4 with a correct file.
+  - **Back-pressure (Phase 5):** the daemon pauses the stream at the boundary, but mitmproxy's stream callback cannot pause the upstream. The PoC bridge spools those bytes to disk and keeps reading the upstream after the daemon finishes. The production addon must do neither: `mitm_adapter.py` has to pause reading from the upstream, and cancel it once the file is complete.
   - **Show the mode in the UI:** "single connection" or "accelerated (N connections)".
-  - **Crash recovery:** a stream cannot survive the process holding it. After a crash, an accelerable download resumes from the segment map with `Range` requests. Anything else is marked failed with "this link cannot be resumed".
+  - **Lost streams:** a stream cannot survive a dropped connection or a crash, and the original URL is never requested whole again. The partial file and segment map are kept. If the original response proved Range support (same conditions as acceleration, except size and the single-use hint) and the host is not in `HostPolicy`, the missing segments resume with `Range` requests. Otherwise, or if those are refused, the download moves to `needs_refresh` with "link expired, refresh it". `POST /downloads/{id}/refresh-url` then continues from the same offset, with the same validators; a link that serves a different file is refused and the download stays in `needs_refresh`.
 - **Video grabber:** report `.m3u8` / `.mpd` manifests and media MIME types without breaking playback; group them per page via `Referer`. For sites yt-dlp supports (YouTube etc.), do not rely on traffic: report the page URL and let YtDlpEngine list the formats. Emit `capture.detected` for the floating bar.
 - **mitmproxy isolation.** The handoff needs behaviour stock mitmproxy cannot provide: ending the browser side while the upstream keeps running. All code that touches non-public mitmproxy APIs lives in `daemon/capture/mitm_adapter.py`, and nowhere else. It refuses to install on any version other than the pinned one.
 - **Upgrading mitmproxy** (always by hand, in its own `fix/` branch; excluded from automated updates):

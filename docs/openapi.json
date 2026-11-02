@@ -1,0 +1,1299 @@
+{
+ "components": {
+  "schemas": {
+   "AddDownload": {
+    "properties": {
+     "audio_only": {
+      "default": false,
+      "title": "Audio Only",
+      "type": "boolean"
+     },
+     "category": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Category"
+     },
+     "cookies": {
+      "default": "",
+      "title": "Cookies",
+      "type": "string"
+     },
+     "cookies_file": {
+      "default": "",
+      "title": "Cookies File",
+      "type": "string"
+     },
+     "cookies_from_browser": {
+      "default": "",
+      "title": "Cookies From Browser",
+      "type": "string"
+     },
+     "dest_dir": {
+      "default": "",
+      "title": "Dest Dir",
+      "type": "string"
+     },
+     "filename": {
+      "default": "",
+      "title": "Filename",
+      "type": "string"
+     },
+     "format_id": {
+      "default": "",
+      "title": "Format Id",
+      "type": "string"
+     },
+     "headers": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "default": {},
+      "title": "Headers",
+      "type": "object"
+     },
+     "page_url": {
+      "default": "",
+      "title": "Page Url",
+      "type": "string"
+     },
+     "playlist_items": {
+      "default": "",
+      "title": "Playlist Items",
+      "type": "string"
+     },
+     "referer": {
+      "default": "",
+      "title": "Referer",
+      "type": "string"
+     },
+     "speed_limit": {
+      "default": 0,
+      "title": "Speed Limit",
+      "type": "integer"
+     },
+     "start_paused": {
+      "default": false,
+      "title": "Start Paused",
+      "type": "boolean"
+     },
+     "subtitles": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Subtitles",
+      "type": "array"
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     }
+    },
+    "required": [
+     "url"
+    ],
+    "title": "AddDownload",
+    "type": "object"
+   },
+   "AttachDownload": {
+    "properties": {
+     "dest_dir": {
+      "default": "",
+      "title": "Dest Dir",
+      "type": "string"
+     },
+     "filename": {
+      "default": "",
+      "title": "Filename",
+      "type": "string"
+     },
+     "method": {
+      "default": "GET",
+      "title": "Method",
+      "type": "string"
+     },
+     "page_url": {
+      "default": "",
+      "title": "Page Url",
+      "type": "string"
+     },
+     "request_headers": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "default": {},
+      "title": "Request Headers",
+      "type": "object"
+     },
+     "response_headers": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "default": {},
+      "title": "Response Headers",
+      "type": "object"
+     },
+     "status": {
+      "default": 200,
+      "title": "Status",
+      "type": "integer"
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     }
+    },
+    "required": [
+     "url"
+    ],
+    "title": "AttachDownload",
+    "type": "object"
+   },
+   "Category": {
+    "properties": {
+     "dest_dir": {
+      "default": "",
+      "title": "Dest Dir",
+      "type": "string"
+     },
+     "extensions": {
+      "default": "",
+      "title": "Extensions",
+      "type": "string"
+     },
+     "icon": {
+      "default": "",
+      "title": "Icon",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "mime_prefixes": {
+      "default": "",
+      "title": "Mime Prefixes",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "title": "Category",
+    "type": "object"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "title": "Detail",
+      "type": "array"
+     }
+    },
+    "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "PatchDownload": {
+    "properties": {
+     "filename": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Filename"
+     },
+     "priority": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Priority"
+     },
+     "speed_limit": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Speed Limit"
+     }
+    },
+    "title": "PatchDownload",
+    "type": "object"
+   },
+   "Probe": {
+    "properties": {
+     "headers": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "default": {},
+      "title": "Headers",
+      "type": "object"
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     }
+    },
+    "required": [
+     "url"
+    ],
+    "title": "Probe",
+    "type": "object"
+   },
+   "RefreshUrl": {
+    "properties": {
+     "headers": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "default": {},
+      "title": "Headers",
+      "type": "object"
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     }
+    },
+    "required": [
+     "url"
+    ],
+    "title": "RefreshUrl",
+    "type": "object"
+   },
+   "Schedule": {
+    "properties": {
+     "action": {
+      "title": "Action",
+      "type": "string"
+     },
+     "cron": {
+      "title": "Cron",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "params_json": {
+      "default": "{}",
+      "title": "Params Json",
+      "type": "string"
+     },
+     "post_action": {
+      "default": "none",
+      "title": "Post Action",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "cron",
+     "action"
+    ],
+    "title": "Schedule",
+    "type": "object"
+   },
+   "Status": {
+    "enum": [
+     "queued",
+     "probing",
+     "active",
+     "paused",
+     "completed",
+     "failed",
+     "canceled",
+     "needs_refresh"
+    ],
+    "title": "Status",
+    "type": "string"
+   },
+   "ValidationError": {
+    "properties": {
+     "ctx": {
+      "title": "Context",
+      "type": "object"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "title": "Location",
+      "type": "array"
+     },
+     "msg": {
+      "title": "Message",
+      "type": "string"
+     },
+     "type": {
+      "title": "Error Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError",
+    "type": "object"
+   }
+  },
+  "securitySchemes": {
+   "HTTPBearer": {
+    "scheme": "bearer",
+    "type": "http"
+   }
+  }
+ },
+ "info": {
+  "title": "sayld",
+  "version": "0.0.0"
+ },
+ "openapi": "3.1.0",
+ "paths": {
+  "/categories": {
+   "get": {
+    "operationId": "list/categories",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Category"
+         },
+         "title": "Response List/Categories",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Read All"
+   },
+   "post": {
+    "operationId": "create/categories",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Category"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Category"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Create"
+   }
+  },
+  "/categories/{key}": {
+   "delete": {
+    "operationId": "delete/categories",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "key",
+      "required": true,
+      "schema": {
+       "title": "Key",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Remove"
+   },
+   "put": {
+    "operationId": "replace/categories",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "key",
+      "required": true,
+      "schema": {
+       "title": "Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Category"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Category"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Replace"
+   }
+  },
+  "/downloads": {
+   "get": {
+    "operationId": "list_downloads_downloads_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "state",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/Status"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "State"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "title": "Response List Downloads Downloads Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List Downloads"
+   },
+   "post": {
+    "operationId": "add_download_downloads_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AddDownload"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Add Download Downloads Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Add Download"
+   }
+  },
+  "/downloads/attach": {
+   "post": {
+    "description": "Register a captured response. The origin is not contacted.",
+    "operationId": "attach_download_downloads_attach_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AttachDownload"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Attach Download Downloads Attach Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Attach Download"
+   }
+  },
+  "/downloads/{download_id}": {
+   "delete": {
+    "operationId": "delete_download_downloads__download_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "download_id",
+      "required": true,
+      "schema": {
+       "title": "Download Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Delete Download"
+   },
+   "get": {
+    "operationId": "get_download_downloads__download_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "download_id",
+      "required": true,
+      "schema": {
+       "title": "Download Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get Download Downloads  Download Id  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Download"
+   },
+   "patch": {
+    "operationId": "patch_download_downloads__download_id__patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "download_id",
+      "required": true,
+      "schema": {
+       "title": "Download Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PatchDownload"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Patch Download Downloads  Download Id  Patch",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Patch Download"
+   }
+  },
+  "/downloads/{download_id}/pause": {
+   "post": {
+    "operationId": "pause_downloads__download_id__pause_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "download_id",
+      "required": true,
+      "schema": {
+       "title": "Download Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Pause Downloads  Download Id  Pause Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Pause"
+   }
+  },
+  "/downloads/{download_id}/refresh-url": {
+   "post": {
+    "operationId": "refresh_url_downloads__download_id__refresh_url_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "download_id",
+      "required": true,
+      "schema": {
+       "title": "Download Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RefreshUrl"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Refresh Url Downloads  Download Id  Refresh Url Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Refresh Url"
+   }
+  },
+  "/downloads/{download_id}/resume": {
+   "post": {
+    "operationId": "resume_downloads__download_id__resume_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "download_id",
+      "required": true,
+      "schema": {
+       "title": "Download Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Resume Downloads  Download Id  Resume Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Resume"
+   }
+  },
+  "/downloads/{download_id}/stream": {
+   "put": {
+    "description": "Hand over the response body from offset 0. It may be used once.",
+    "operationId": "put_stream_downloads__download_id__stream_put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "download_id",
+      "required": true,
+      "schema": {
+       "title": "Download Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Put Stream Downloads  Download Id  Stream Put",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Put Stream"
+   }
+  },
+  "/probe": {
+   "post": {
+    "operationId": "probe_probe_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Probe"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Probe Probe Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Probe"
+   }
+  },
+  "/schedules": {
+   "get": {
+    "operationId": "list/schedules",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Schedule"
+         },
+         "title": "Response List/Schedules",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Read All"
+   },
+   "post": {
+    "operationId": "create/schedules",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Schedule"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Schedule"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Create"
+   }
+  },
+  "/schedules/{key}": {
+   "delete": {
+    "operationId": "delete/schedules",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "key",
+      "required": true,
+      "schema": {
+       "title": "Key",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Remove"
+   },
+   "put": {
+    "operationId": "replace/schedules",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "key",
+      "required": true,
+      "schema": {
+       "title": "Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Schedule"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Schedule"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Replace"
+   }
+  },
+  "/settings": {
+   "get": {
+    "operationId": "get_settings_settings_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get Settings Settings Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Settings"
+   },
+   "put": {
+    "operationId": "put_settings_settings_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "additionalProperties": true,
+        "title": "Values",
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Put Settings Settings Put",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Put Settings"
+   }
+  }
+ }
+}

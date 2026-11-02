@@ -7,7 +7,10 @@ import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
+from importlib.util import find_spec
 from pathlib import Path
+
+from daemon.vault import keyring_available
 
 Which = Callable[[str], str | None]
 VersionOf = Callable[[str], str]
@@ -30,6 +33,7 @@ _INSTALL = {
     "dnf": "sudo dnf install {}",
     "pacman": "sudo pacman -S {}",
 }
+_EJS_INSTALL = "reinstall Sayl: yt-dlp-ejs is missing, so YouTube formats may be lost"
 _DENO_INSTALL = "curl -fsSL https://deno.land/install.sh | sh"
 
 
@@ -97,15 +101,28 @@ def _check_tool(
     return Check(tool, Status.OK, version_of(path) or path)
 
 
-def _check_js_runtime(which: Which, version_of: VersionOf) -> Check:
+def _check_js_runtime(which: Which, version_of: VersionOf, has_solver: Callable[[], bool]) -> Check:
     for name in _JS_RUNTIMES:
         path = which(name)
         if path is not None:
             detail = f"{name} {version_of(path)}".strip()
             if name != "deno":
-                detail += " (needs yt-dlp js_runtimes option)"
-            return Check("js runtime", Status.OK, detail)
+                detail += " (enabled through yt-dlp js_runtimes)"
+            if not has_solver():
+                return Check("js runtime", Status.WARN, f"{detail}, no solver", _EJS_INSTALL)
+            return Check("js runtime", Status.OK, f"{detail} with yt-dlp-ejs")
     return Check("js runtime", Status.WARN, "missing (needed for YouTube)", _DENO_INSTALL)
+
+
+def _check_keyring(available: Callable[[], bool]) -> Check:
+    if available():
+        return Check("keyring", Status.OK, "system keyring")
+    return Check(
+        "keyring",
+        Status.WARN,
+        "no system keyring: saved cookies are protected by a 0600 file, not the keyring",
+        "install and unlock a Secret Service provider, such as gnome-keyring or KWallet",
+    )
 
 
 def _check_session(env: Mapping[str, str]) -> Check:
@@ -129,6 +146,8 @@ def run_checks(
     version_of: VersionOf = tool_version,
     env: Mapping[str, str] = os.environ,
     os_release_path: Path = Path("/etc/os-release"),
+    keyring_ok: Callable[[], bool] = keyring_available,
+    ejs_ok: Callable[[], bool] = lambda: find_spec("yt_dlp_ejs") is not None,
 ) -> list[Check]:
     """Run every environment check. Pure apart from the injected collaborators."""
     os_release = os_release_path.read_text() if os_release_path.exists() else ""
@@ -151,7 +170,7 @@ def run_checks(
             version_of=version_of,
             manager=manager,
         ),
-        _check_js_runtime(which, version_of),
+        _check_js_runtime(which, version_of, ejs_ok),
         _check_tool(
             "certutil",
             missing=Status.WARN,
@@ -168,6 +187,7 @@ def run_checks(
             version_of=version_of,
             manager=manager,
         ),
+        _check_keyring(keyring_ok),
         _check_session(env),
     ]
 

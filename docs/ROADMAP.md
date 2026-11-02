@@ -17,16 +17,19 @@ Claude Code updates these checkboxes at the end of each phase. Acceptance criter
 - [x] Go / no-go decision recorded: GO (see `poc/RESULTS.md`)
 
 ## Phase 1 — Daemon core
-- [ ] Config, XDG paths, token, logging with redaction
-- [ ] SQLModel models + Alembic migrations
-- [ ] Engine interface (with `attach`), Aria2Engine, YtDlpEngine
-- [ ] HybridEngine: StreamThroughEngine, range workers, segment map, host policy
-- [ ] Stream attach API for sayl-capture
-- [ ] Lab acceptance: one-time, session-bound, and Range-capable links each complete with a correct hash
-- [ ] Router
-- [ ] Queue manager (concurrency, priorities, retries, speed limits)
-- [ ] REST API + WebSocket events + OpenAPI schema
-- [ ] Crash/restart recovery
+- [x] Config, XDG paths, token, logging with redaction
+- [x] SQLModel models + Alembic migrations
+- [x] Engine interface (with `attach`), Aria2Engine, YtDlpEngine
+- [x] HybridEngine: StreamThroughEngine, range workers, segment map, host policy
+- [x] Stream attach API for sayl-capture
+- [x] Lab acceptance: one-time, session-bound, and Range-capable links each complete with a correct hash
+- [x] Router
+- [x] Queue manager (concurrency, priorities, retries, speed limits)
+- [x] REST API + WebSocket events + OpenAPI schema
+- [x] Crash/restart recovery
+- [x] Lost streams resume by Range, or wait in `needs_refresh` for a new link
+- [x] Acceptance: browser lab through the daemon (Chromium + Firefox, HTTP/1.1 + HTTP/2)
+- [x] Acceptance: real YouTube 1080p merge, and 5 selected items of a playlist
 
 ## Phase 2 — CLI  (tag `v0.1.0`)
 - [ ] `sayl add | ls | pause | resume | rm | info | watch | config | doctor`
@@ -47,6 +50,7 @@ Claude Code updates these checkboxes at the end of each phase. Acceptance criter
 - [ ] Per-machine CA, install into system / NSS / Firefox profiles, uninstall
 - [ ] System proxy toggle with save/restore
 - [ ] Production addon: detection, stream-first handoff to HybridEngine, bypass list
+- [ ] Real back-pressure in `mitm_adapter.py`, and cancelling the upstream once the daemon finishes
 - [ ] Video grabber + floating bar
 - [ ] Acceptance: >400 MB Google Drive file with the virus-scan page completes under a speed limit
 - [ ] Acceptance: logged-in download forwards cookies and Authorization (lab login server + one real site)

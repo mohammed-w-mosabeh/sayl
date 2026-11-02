@@ -19,6 +19,8 @@ def checks(available: set[str], env: dict[str, str], tmp_path: Path) -> dict[str
     release = tmp_path / "os-release"
     release.write_text('ID=debian\nVERSION_ID="13"\n')
     result = run_checks(
+        keyring_ok=lambda: True,
+        ejs_ok=lambda: True,
         which=which_from(available),
         version_of=lambda _: "1.2.3",
         env=env,
@@ -106,3 +108,31 @@ def test_cli_exit_codes(monkeypatch: pytest.MonkeyPatch) -> None:
     bad = doctor.Check("aria2c", Status.FAIL, "missing", "sudo apt install aria2")
     monkeypatch.setattr("cli.main.run_checks", lambda: [bad])
     assert runner.invoke(app, ["doctor"]).exit_code == 1
+
+
+def test_missing_keyring_is_a_warning_with_a_fix(tmp_path: Path) -> None:
+    result = run_checks(
+        which=lambda _: None,
+        version_of=lambda _: "",
+        env={},
+        os_release_path=tmp_path / "none",
+        keyring_ok=lambda: False,
+    )
+    found = {check.name: check for check in result}
+    assert found["keyring"].status is Status.WARN
+    assert "0600" in found["keyring"].detail
+    assert found["keyring"].fix
+
+
+def test_a_js_runtime_without_the_solver_is_a_warning(tmp_path: Path) -> None:
+    result = run_checks(
+        which=lambda name: name if name == "node" else None,
+        version_of=lambda _: "22",
+        env={},
+        os_release_path=tmp_path / "none",
+        keyring_ok=lambda: True,
+        ejs_ok=lambda: False,
+    )
+    found = {check.name: check for check in result}
+    assert found["js runtime"].status is Status.WARN
+    assert "no solver" in found["js runtime"].detail
