@@ -1,0 +1,13 @@
+[
+ {
+  "name": "drive-page",
+  "goto": "https://drive.google.com/uc?export=download&id=1l_5RK28JRL19wpT22B-DY9We3TVXnnQQ"
+ },
+ {
+  "name": "drive-click",
+  "click": "#uc-download-link"
+ },
+ {
+  "wait": 30000
+ }
+]

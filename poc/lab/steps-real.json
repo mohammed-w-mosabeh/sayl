@@ -1,0 +1,92 @@
+[
+ {
+  "name": "control-wikipedia",
+  "goto": "https://en.wikipedia.org/wiki/Main_Page"
+ },
+ {
+  "wait": 4000
+ },
+ {
+  "name": "github-page",
+  "goto": "https://github.com/BurntSushi/ripgrep/releases/tag/14.1.1"
+ },
+ {
+  "name": "github-click",
+  "script": "const a=document.createElement('a');a.href=\"https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-unknown-linux-musl.tar.gz\";a.id='sayl-link';a.textContent='x';document.body.appendChild(a);a.click();"
+ },
+ {
+  "wait": 25000
+ },
+ {
+  "name": "7zip-page",
+  "goto": "https://www.7-zip.org/download.html"
+ },
+ {
+  "name": "7zip-click",
+  "script": "const a=document.createElement('a');a.href=\"https://www.7-zip.org/a/7z2408-linux-x64.tar.xz\";a.id='sayl-link';a.textContent='x';document.body.appendChild(a);a.click();"
+ },
+ {
+  "wait": 25000
+ },
+ {
+  "name": "sourceforge",
+  "goto": "https://sourceforge.net/projects/libpng/files/zlib/1.3.1/zlib-1.3.1.tar.gz/download"
+ },
+ {
+  "wait": 25000
+ },
+ {
+  "name": "mediafire-page",
+  "goto": "https://www.mediafire.com/file/53wlw5djaf3hd7m/ID_Testing.zip/file"
+ },
+ {
+  "name": "mediafire-click",
+  "click": "#downloadButton"
+ },
+ {
+  "wait": 25000
+ },
+ {
+  "name": "post-page",
+  "goto": "https://httpbin.org/robots.txt"
+ },
+ {
+  "name": "post-submit",
+  "script": "const f=document.createElement('form');f.method='post';f.action=\"https://httpbin.org/response-headers?Content-Disposition=attachment%3B%20filename%3Dpost-result.json\";document.body.appendChild(f);f.submit();"
+ },
+ {
+  "wait": 25000
+ },
+ {
+  "name": "iso-page",
+  "goto": "http://tinycorelinux.net/downloads.html"
+ },
+ {
+  "name": "iso-click",
+  "script": "const a=document.createElement('a');a.href=\"http://tinycorelinux.net/16.x/x86/release/TinyCore-current.iso\";a.id='sayl-link';a.textContent='x';document.body.appendChild(a);a.click();"
+ },
+ {
+  "wait": 25000
+ },
+ {
+  "name": "youtube",
+  "goto": "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+ },
+ {
+  "wait": 8000
+ },
+ {
+  "name": "hls",
+  "goto": "https://hlsjs.video-dev.org/demo/?src=https%3A%2F%2Ftest-streams.mux.dev%2Fx36xhzz%2Fx36xhzz.m3u8"
+ },
+ {
+  "wait": 8000
+ },
+ {
+  "name": "after-browsing",
+  "goto": "https://en.wikipedia.org/wiki/Download_manager"
+ },
+ {
+  "wait": 1000
+ }
+]

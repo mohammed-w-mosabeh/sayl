@@ -5,3 +5,4 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 ## [Unreleased]
 - Project specification, roadmap, and Claude Code instructions.
 - Phase 0 scaffold: uv project, ruff, mypy strict, pytest, pre-commit, CI, pnpm workspace placeholder, and `sayl doctor`.
+- Phase 0.5 proof of concept: mitmproxy capture addon with re-request and stream-through handoffs, a TLS test lab, and real-site results in `poc/RESULTS.md`. Decision: go.

@@ -10,11 +10,11 @@ Claude Code updates these checkboxes at the end of each phase. Acceptance criter
 - [x] `sayl doctor` (aria2c, ffmpeg, JS runtime for yt-dlp, certutil, wl-paste/xclip, session type)
 
 ## Phase 0.5 — Proof of concept (`poc/`)
-- [ ] mitmproxy addon detecting downloads in `responseheaders`
-- [ ] Re-request handoff to aria2c via RPC + 204 to the browser
-- [ ] Stream-through handoff for single-use links
-- [ ] Results table for 8+ real sites in `poc/RESULTS.md`
-- [ ] Go / no-go decision recorded
+- [x] mitmproxy addon detecting downloads in `responseheaders`
+- [x] Re-request handoff to aria2c via RPC + 204 to the browser
+- [x] Stream-through handoff for single-use links
+- [x] Results table for 8+ real sites in `poc/RESULTS.md`
+- [x] Go / no-go decision recorded: GO (see `poc/RESULTS.md`)
 
 ## Phase 1 — Daemon core
 - [ ] Config, XDG paths, token, logging with redaction

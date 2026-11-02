@@ -22,6 +22,9 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.9",
 ]
+poc = [
+    "mitmproxy>=12.3.1",
+]
 
 [build-system]
 requires = ["hatchling>=1.27"]
@@ -40,6 +43,8 @@ select = ["E", "F", "W", "I", "UP", "B", "S", "ASYNC", "C4", "PTH", "RUF", "SIM"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
+"poc/test_*.py" = ["S101"]
+"poc/addon.py" = ["S101"]
 
 [tool.mypy]
 python_version = "3.12"

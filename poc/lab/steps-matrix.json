@@ -1,0 +1,19 @@
+[
+  {"goto": "https://127.0.0.1:8443/page"},
+  {"click": "#range"},
+  {"wait": 300},
+  {"goto": "https://127.0.0.1:8443/next"},
+  {"goto": "https://127.0.0.1:8443/page"},
+  {"click": "#once"},
+  {"wait": 300},
+  {"goto": "https://127.0.0.1:8443/next"},
+  {"goto": "https://127.0.0.1:8443/page"},
+  {"click": "#postbtn"},
+  {"wait": 300},
+  {"goto": "https://127.0.0.1:8443/next"},
+  {"wait": 3000},
+  {"goto": "https://127.0.0.1:8443/page"},
+  {"click": "#noranges"},
+  {"wait": 300},
+  {"quit": true}
+]

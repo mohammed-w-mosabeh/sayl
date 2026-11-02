@@ -49,3 +49,6 @@ tests/fixtures/large/
 
 # Claude Code per-machine settings
 .claude/settings.local.json
+
+# Proof of concept runtime state
+poc/.state/
