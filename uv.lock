@@ -938,21 +938,22 @@ wheels = [
 name = "sayl"
 version = "0.0.0"
 source = { editable = "." }
+default-groups = ["capture", "dev"]
 dependencies = [
     { name = "rich" },
     { name = "typer" },
 ]
 
 [package.dev-dependencies]
+capture = [
+    { name = "mitmproxy" },
+]
 dev = [
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
-]
-poc = [
-    { name = "mitmproxy" },
 ]
 
 [package.metadata]
@@ -962,6 +963,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+capture = [{ name = "mitmproxy", specifier = "==12.3.1" }]
 dev = [
     { name = "mypy", specifier = ">=1.14" },
     { name = "pre-commit", specifier = ">=4.0" },
@@ -969,7 +971,6 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.0" },
     { name = "ruff", specifier = ">=0.9" },
 ]
-poc = [{ name = "mitmproxy", specifier = ">=12.3.1" }]
 
 [[package]]
 name = "service-identity"

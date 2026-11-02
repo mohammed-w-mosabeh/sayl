@@ -19,7 +19,10 @@ Claude Code updates these checkboxes at the end of each phase. Acceptance criter
 ## Phase 1 — Daemon core
 - [ ] Config, XDG paths, token, logging with redaction
 - [ ] SQLModel models + Alembic migrations
-- [ ] Engine interface, Aria2Engine, YtDlpEngine
+- [ ] Engine interface (with `attach`), Aria2Engine, YtDlpEngine
+- [ ] HybridEngine: StreamThroughEngine, range workers, segment map, host policy
+- [ ] Stream attach API for sayl-capture
+- [ ] Lab acceptance: one-time, session-bound, and Range-capable links each complete with a correct hash
 - [ ] Router
 - [ ] Queue manager (concurrency, priorities, retries, speed limits)
 - [ ] REST API + WebSocket events + OpenAPI schema
@@ -43,9 +46,11 @@ Claude Code updates these checkboxes at the end of each phase. Acceptance criter
 ## Phase 5 — Capture proxy  (tag `v0.2.0`)
 - [ ] Per-machine CA, install into system / NSS / Firefox profiles, uninstall
 - [ ] System proxy toggle with save/restore
-- [ ] Production addon: detection, both handoff strategies, bypass list
+- [ ] Production addon: detection, stream-first handoff to HybridEngine, bypass list
 - [ ] Video grabber + floating bar
-- [ ] StreamThroughEngine
+- [ ] Acceptance: >400 MB Google Drive file with the virus-scan page completes under a speed limit
+- [ ] Acceptance: logged-in download forwards cookies and Authorization (lab login server + one real site)
+- [ ] Acceptance: no added stalls on a 10-minute 1080p HLS stream, compared with no proxy
 
 ## Phase 6 — IDM parity
 - [ ] Scheduler, speed schedules, post-completion actions

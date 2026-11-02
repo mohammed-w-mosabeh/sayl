@@ -24,11 +24,11 @@ User experience target: the user clicks "Download" in any browser exactly as usu
 ## Architecture
 
 - **sayld (daemon):** Python 3.12, asyncio, FastAPI + Uvicorn, SQLModel on SQLite (WAL mode), Alembic migrations, APScheduler.
-- **Engine interface** `Engine`: `probe(url, headers) -> ProbeResult`, `add(job) -> engine_id`, `pause`, `resume`, `cancel`, `set_speed_limit`, `refresh_url(new_url)`, `status() -> Progress`.
+- **Engine interface** `Engine`: `probe(url, headers) -> ProbeResult`, `add(job) -> engine_id`, `attach(job, stream) -> engine_id`, `pause`, `resume`, `cancel`, `set_speed_limit`, `refresh_url(new_url)`, `status() -> Progress`. `attach` takes ownership of a byte stream already open at offset 0, and is what makes a captured download possible without requesting its URL again. Only HybridEngine implements it; the other engines raise `AttachNotSupported`.
   - **Aria2Engine:** spawn `aria2c` as a managed child process with `--enable-rpc --rpc-listen-all=false --rpc-secret=<random per start> --continue=true --save-session=<data>/aria2.session --input-file=<same, if it exists> --save-session-interval=30 --max-connection-per-server=16 --split=16 --min-split-size=1M --file-allocation=falloc` (fallback `none` on unsupported filesystems). JSON-RPC over WebSocket. Use `aria2.changeUri` for expired-link refresh and `aria2.changeOption` / `aria2.changeGlobalOption` for speed limits. Restart `aria2c` automatically if it dies and re-sync state from SQLite.
   - **YtDlpEngine:** use `yt_dlp.YoutubeDL` as a library in a worker thread or subprocess so it never blocks the event loop. `extract_info(download=False)` for probing; expose formats, subtitles, playlist entries. Map `progress_hooks` and `postprocessor_hooks` to `Progress`. Merge with ffmpeg. Support audio extraction, subtitle embedding, playlist item selection, rate limit, and cookies (file or `cookiesfrombrowser`). Recent yt-dlp releases need an external JavaScript runtime (e.g. Deno) for YouTube: check the yt-dlp README at build time and detect/report the runtime in `sayl doctor`.
-  - **StreamThroughEngine** (see Capture): writes bytes already flowing through the proxy to disk, for single-use links.
-- **Router:** if a yt-dlp extractor other than `generic` matches the URL, use YtDlpEngine; otherwise send `HEAD` (fallback ranged `GET bytes=0-0`) and use Aria2Engine. Magnet links and `.torrent` go to Aria2Engine.
+  - **HybridEngine** (see Capture): the engine for every captured download. **StreamThroughEngine** writes the attached stream to disk; **range workers** fetch the remaining segments when acceleration is allowed; a persisted **segment map** records which byte ranges are on disk.
+- **Router:** a download attached by sayl-capture always goes to HybridEngine, with no probe. Downloads that start from the CLI, clipboard, or UI: if a yt-dlp extractor other than `generic` matches the URL, use YtDlpEngine; otherwise send `HEAD` (fallback ranged `GET bytes=0-0`) and use Aria2Engine. Magnet links and `.torrent` go to Aria2Engine.
 - **Queue manager:** max concurrent downloads (default 3), priorities, drag reorder, retry with exponential backoff + jitter (max 5), global and per-download speed limits, speed schedules.
 - **sayl-capture:** separate process running mitmproxy as a library (`DumpMaster`) with a custom addon.
 - **Clipboard watcher:** separate async task in the daemon or a tiny helper process.
@@ -41,8 +41,9 @@ User experience target: the user clicks "Download" in any browser exactly as usu
 ```
 sayl/
   daemon/          # sayld: FastAPI app, engines, router, queue, scheduler, db
-    engines/       # base.py, aria2.py, ytdlp.py, streamthrough.py
+    engines/       # base.py, aria2.py, ytdlp.py, streamthrough.py, hybrid.py
     capture/       # mitmproxy addon, CA management, system proxy toggles
+                   # mitm_adapter.py is the only file allowed to touch mitmproxy internals
     watchers/      # clipboard: x11.py, wayland.py, xwayland_poll.py
   cli/             # sayl: Typer
   desktop/         # Tauri 2 + Next.js
@@ -58,10 +59,12 @@ sayl/
 - `Category(id, name, extensions, mime_prefixes, dest_dir, icon)`
 - `Schedule(id, name, cron, action[start_queue|stop_queue|speed_limit], params_json, post_action[none|shutdown|suspend|command])`
 - `Setting(key, value_json)`
+- `Segment(id, download_id, start, end, done_bytes, source[stream|range], status)` — the segment map of a HybridEngine download.
+- `HostPolicy(host, accelerate, reason[auth|gone|validator_changed|not_206], updated_at)` — a host recorded here skips acceleration. Users can clear it in settings.
 
 ## API (FastAPI; every route requires the bearer token)
 
-`POST /downloads` (url, headers?, cookies?, referer?, page_url?, filename?, dest_dir?, category?, format_id?, start_paused?) · `GET /downloads` · `GET|PATCH|DELETE /downloads/{id}` · `POST /downloads/{id}/(pause|resume|refresh-url|verify)` · `POST /probe` · `GET|PUT /settings` · CRUD `/categories`, `/schedules` · `POST /batch` (list, or pattern like `file[001-100].jpg`) · `POST /grab-site` · `WS /ws` (events: `download.added|progress|completed|failed`, `capture.detected`, `clipboard.detected`). Publish the OpenAPI schema and generate the TypeScript client from it. Reject requests whose `Origin` header is a web origin.
+`POST /downloads` (url, headers?, cookies?, referer?, page_url?, filename?, dest_dir?, category?, format_id?, start_paused?) · `POST /downloads/attach` (url, method, request_headers, response_headers, status, page_url?, filename?; creates a HybridEngine download and returns its id, with no request to the origin) · `PUT /downloads/{id}/stream` (raw response body from offset 0, chunked, with back-pressure; used once, and an early close fails the stream) · `GET /downloads` · `GET|PATCH|DELETE /downloads/{id}` · `POST /downloads/{id}/(pause|resume|refresh-url|verify)` · `POST /probe` · `GET|PUT /settings` · CRUD `/categories`, `/schedules` · `POST /batch` (list, or pattern like `file[001-100].jpg`) · `POST /grab-site` · `WS /ws` (events: `download.added|progress|completed|failed`, `capture.detected`, `clipboard.detected`). Publish the OpenAPI schema and generate the TypeScript client from it. Reject requests whose `Origin` header is a web origin.
 
 ## Capture (no extension)
 
@@ -77,10 +80,21 @@ GNOME via `gsettings org.gnome.system.proxy`, KDE via `kwriteconfig5/6`, plus pr
 - Decide in the `responseheaders` hook, NEVER in `response` (that would buffer whole files in memory).
 - Only intercept top-level navigations (`Sec-Fetch-Mode: navigate`) or requests with no `Sec-Fetch-*` headers. For every other request (XHR, fetch, media) only observe and report media manifests; never replace their response.
 - It is a download when any of: `Content-Disposition: attachment`; a known download extension; a binary MIME type (not `text/*`, not `application/json|javascript|xml`, not fonts, not images under the threshold) with `Content-Length` above the configurable threshold (default 2 MB).
-- **Handoff strategy** (try in order):
-  1. **Re-request:** if the server supports `Range` (`Accept-Ranges: bytes`) and the URL does not look single-use, POST to the daemon (final URL, method, `Cookie`, `Referer`, `User-Agent`, `Authorization`, page URL), then replace the response with HTTP 204 so the browser does nothing. aria2 downloads it with segmentation.
-  2. **Stream-through:** otherwise (single-use or signed links, no Range support, POST downloads), keep the existing upstream response: set `flow.response.stream` to a callable that tees each chunk to the daemon's StreamThroughEngine (writes to the file) and returns empty bytes to the browser, then finish the browser side with an empty body. The download continues on the original connection, so one-time tokens are never reused. No segmentation in this mode; show "single connection" in the UI.
+- **Handoff: stream first, accelerate if allowed.** The URL is never guessed at to decide how to start.
+  1. **Stream first.** Every captured download starts as stream-through on the original connection. Never request the original URL again to begin a download. Replace the response with an empty HTTP 204 so the browser does nothing, keep the upstream open, and tee each chunk to the daemon (`POST /downloads/attach`, then `PUT /downloads/{id}/stream`). `flow.response.stream` returns empty bytes to the browser. POST downloads and responses with no `Content-Length` stay in this mode for their whole life.
+  2. **Accelerate if allowed.** Only when all of these hold: the response has `Accept-Ranges: bytes`, a known `Content-Length`, a strong validator (`ETag` that is not weak, or `Last-Modified`), no `Content-Encoding`, the method is `GET`, the remaining bytes exceed `accelerate_min_bytes` (default 20 MB), the host is not recorded in `HostPolicy`, and the single-use hint did not fire. The daemon then opens extra `Range` connections for the remaining segments with the original `Cookie`, `Authorization`, `Referer`, and `User-Agent`, working back from the end of the file so the original stream keeps the bytes it is already receiving. It opens one connection first and adds the others only after that one succeeds, to keep a mistaken request to a single.
+  3. **Validate every extra connection.** Each response must be `206` with a matching `Content-Range` and total size, and the same `ETag`/`Last-Modified` as the original response.
+  4. **Fall back, never fail.** On `401`, `403`, `410`, a changed validator, or any non-206 response: cancel all range workers, discard their unverified bytes, and finish on the original stream. The original stream stays open until the segment map shows the file is complete, so this is always possible. Record the host in `HostPolicy` so later downloads from it skip acceleration.
+  5. **Single-use hint.** `looks_single_use` checks signed query parameters and high-entropy path segments. It only skips acceleration. It never decides correctness, and never picks a different way to start. A link it misses may receive one rejected Range request, then falls back under rule 4 with a correct file.
+  - **Show the mode in the UI:** "single connection" or "accelerated (N connections)".
+  - **Crash recovery:** a stream cannot survive the process holding it. After a crash, an accelerable download resumes from the segment map with `Range` requests. Anything else is marked failed with "this link cannot be resumed".
 - **Video grabber:** report `.m3u8` / `.mpd` manifests and media MIME types without breaking playback; group them per page via `Referer`. For sites yt-dlp supports (YouTube etc.), do not rely on traffic: report the page URL and let YtDlpEngine list the formats. Emit `capture.detected` for the floating bar.
+- **mitmproxy isolation.** The handoff needs behaviour stock mitmproxy cannot provide: ending the browser side while the upstream keeps running. All code that touches non-public mitmproxy APIs lives in `daemon/capture/mitm_adapter.py`, and nowhere else. It refuses to install on any version other than the pinned one.
+- **Upgrading mitmproxy** (always by hand, in its own `fix/` branch; excluded from automated updates):
+  1. Read the upstream changes to `mitmproxy/proxy/layers/http/`, which `mitm_adapter.py` patches.
+  2. Change the exact pin in `pyproject.toml` and `SUPPORTED_VERSION` in `mitm_adapter.py` together, then run `uv lock`.
+  3. Run the single-use lab matrix locally: `uv run python poc/lab/run_matrix.py` for each browser and protocol.
+  4. Merge only when every CI matrix cell is green. If it cannot go green, stay on the pinned version and open an issue.
 - **Bypass list** (defaults + user editable): banking and login domains, OS update mirrors, and any host that fails the TLS handshake through the proxy (auto-add after a failure, notify once).
 
 ## Clipboard
@@ -99,7 +113,7 @@ Segmented download up to 16 connections · resume after crash/reboot · expired-
 
 0. **Scaffold:** uv, pnpm, ruff, mypy --strict, pytest, pre-commit, GitHub Actions, `sayl doctor`.
 0.5. **Proof of concept (one day, in `poc/`):** a minimal mitmproxy addon that detects a download in Chrome and Firefox and hands it to a bare aria2c via RPC, plus the stream-through path for one single-use-link site. Test on at least 8 real sites (GitHub release, SourceForge, a Google Drive file, a Mediafire file, a Linux ISO mirror, a POST-based download, a site with signed URLs, a YouTube page for grabber detection). Report a table of site → result → notes. If capture fails on more than 2 of them, stop and report before Phase 1.
-1. **Daemon core:** both engines, router, queue, API, WebSocket, persistence.
+1. **Daemon core:** all three engines including HybridEngine, stream attach API, router, queue, API, WebSocket, persistence.
 2. **CLI.**
 3. **Desktop app.**
 4. **Clipboard watcher.**
@@ -114,6 +128,13 @@ Segmented download up to 16 connections · resume after crash/reboot · expired-
 - A YouTube 1080p video downloads merged with audio; selecting 5 items of a 20-item playlist downloads exactly those 5.
 - With capture on, clicking a download link in Chrome and Firefox puts the file in Sayl with the session cookies; the browser shows nothing; normal browsing is unaffected.
 - A single-use link is completed via stream-through without a second request to the server.
+- **Phase 1, hybrid engine (lab, with a test client attaching streams the way sayl-capture will):** each of these completes with a correct SHA-256:
+  - a one-time link with its token in the path, advertising `Accept-Ranges` and an `ETag`, requested exactly once because the hint skips acceleration;
+  - a session-bound link that rejects Range connections with 403, which finishes on the original stream and records the host in `HostPolicy`;
+  - a normal Range-capable link, which is accelerated.
+- **Phase 5, Google Drive:** a file over 400 MB behind the virus-scan confirmation page completes, with a speed limit applied so it does not saturate the link.
+- **Phase 5, logged-in download:** cookies and `Authorization` are forwarded and the file is correct, on a lab login server and one real site.
+- **Phase 5, video playback:** a 10-minute 1080p HLS stream through the proxy has no added stalls compared with no proxy.
 - `sayl capture uninstall` leaves no Sayl CA in any store and restores the previous proxy settings.
 - Copying a supported URL triggers the notification within 1 s on X11 and KDE Wayland, within 2 s on GNOME Wayland.
 - The UI renders correctly in Arabic RTL.

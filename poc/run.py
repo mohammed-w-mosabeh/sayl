@@ -1,6 +1,6 @@
 """Start aria2c and mitmdump for the PoC, both bound to 127.0.0.1. Ctrl-C stops both.
 
-Usage: uv run --group poc python poc/run.py [--port 8899] [--http1] [--insecure-upstream]
+Usage: uv run python poc/run.py [--port 8899] [--http1] [--insecure-upstream]
 """
 
 import argparse
@@ -35,7 +35,7 @@ def main() -> int:
     aria2_bin = shutil.which("aria2c")
     mitmdump = shutil.which("mitmdump")
     if aria2_bin is None or mitmdump is None:
-        print("aria2c or mitmdump is missing; run with: uv run --group poc", file=sys.stderr)
+        print("aria2c or mitmdump is missing; run with: uv run", file=sys.stderr)
         return 1
 
     aria2 = subprocess.Popen(  # noqa: S603 - argument list, path from shutil.which

@@ -18,8 +18,9 @@ from mitmproxy import connection, http
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-import detach
 import detect
+
+from daemon.capture import mitm_adapter as detach
 
 detach.install()
 

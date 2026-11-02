@@ -22,9 +22,14 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.9",
 ]
-poc = [
-    "mitmproxy>=12.3.1",
+capture = [
+    # Exact pin: daemon/capture/mitm_adapter.py patches internals of this version.
+    # Upgrade procedure: docs/SPEC.md, "Upgrading mitmproxy".
+    "mitmproxy==12.3.1",
 ]
+
+[tool.uv]
+default-groups = ["dev", "capture"]
 
 [build-system]
 requires = ["hatchling>=1.27"]
@@ -57,3 +62,5 @@ addopts = "--cov=daemon --cov=cli --cov-report=term-missing --cov-fail-under=80"
 
 [tool.coverage.run]
 branch = true
+# Exercised end to end by the capture-lab CI matrix, not by pytest.
+omit = ["daemon/capture/mitm_adapter.py"]

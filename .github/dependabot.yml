@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      # daemon/capture/mitm_adapter.py patches its internals. Upgrade by hand: docs/SPEC.md.
+      - dependency-name: mitmproxy
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

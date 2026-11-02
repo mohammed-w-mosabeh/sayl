@@ -1,5 +1,8 @@
 """Detach a flow's browser side from its upstream side. Pinned to mitmproxy 12.3.1.
 
+This is the only file allowed to touch non-public mitmproxy APIs. To upgrade, follow
+"Upgrading mitmproxy" in docs/SPEC.md.
+
 Stock mitmproxy cannot do what the handoff needs:
 
 * A response replaced without `stream` is sent only after the whole upstream body is buffered.
@@ -12,11 +15,18 @@ the upstream (`ABORT`, the file will be fetched again) or keeps reading it (`DET
 """
 
 from collections.abc import Generator
-from typing import Any
+from typing import Any, cast
 
 import mitmproxy.version
+from mitmproxy.http import Response
 from mitmproxy.proxy.layers import http as http_layer
 from mitmproxy.proxy.layers.http import HttpLayer, HttpStream
+from mitmproxy.proxy.layers.http._events import (
+    ErrorCode,
+    RequestProtocolError,
+    ResponseEndOfMessage,
+    ResponseHeaders,
+)
 
 SUPPORTED_VERSION = "12.3.1"
 HANDOFF = "sayl_handoff"
@@ -41,12 +51,12 @@ def _start(self: HttpStream) -> Commands:
         yield from _start_response_stream(self)
         return
     client = self.context.client
-    response = http_layer.ResponseHeaders(self.stream_id, self.flow.response, end_stream=False)
+    response = ResponseHeaders(self.stream_id, cast(Response, self.flow.response), end_stream=False)
     yield http_layer.SendHttp(response, client)
-    yield http_layer.SendHttp(http_layer.ResponseEndOfMessage(self.stream_id), client)
+    yield http_layer.SendHttp(ResponseEndOfMessage(self.stream_id), client)
     if mode == ABORT:
-        cancel = http_layer.RequestProtocolError(
-            self.stream_id, "handed off to the download engine", code=http_layer.ErrorCode.CANCEL
+        cancel = RequestProtocolError(
+            self.stream_id, "handed off to the download engine", code=ErrorCode.CANCEL
         )
         yield http_layer.SendHttp(cancel, self.context.server)
         # state_errored swallows events; upstream data already queued during the hook still arrives.
@@ -70,7 +80,7 @@ def _done(self: HttpStream) -> Commands:
 
 def _error(self: HttpStream, event: Any) -> Commands:
     mode = self.flow.metadata.get(HANDOFF)
-    if mode == DETACH and isinstance(event, http_layer.RequestProtocolError):
+    if mode == DETACH and isinstance(event, RequestProtocolError):
         return  # The browser left. It has nothing to do with this body any more.
     if mode is not None:
         _busy.discard(self.context.server)
@@ -84,9 +94,16 @@ def _connection(self: HttpLayer, event: Any, *, reuse: bool = True) -> Commands:
     yield from _get_connection(self, event, reuse=reuse)
 
 
-def install() -> None:
+def check_version() -> None:
     if mitmproxy.version.VERSION != SUPPORTED_VERSION:
-        raise RuntimeError(f"detach.py supports mitmproxy {SUPPORTED_VERSION} only")
+        raise RuntimeError(
+            f"mitm_adapter supports mitmproxy {SUPPORTED_VERSION} only, "
+            f"found {mitmproxy.version.VERSION}. See 'Upgrading mitmproxy' in docs/SPEC.md."
+        )
+
+
+def install() -> None:
+    check_version()
     HttpStream.start_response_stream = _start  # type: ignore[method-assign]
     HttpStream.flow_done = _done  # type: ignore[method-assign]
     HttpStream.handle_protocol_error = _error  # type: ignore[method-assign]

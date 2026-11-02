@@ -1,5 +1,5 @@
 // Drives Playwright's Chromium through the proxy in a throwaway profile.
-// Usage: PLAYWRIGHT_CORE=<dir> CHROME=<bin> node chromium.mjs <proxy-port|direct> <steps.json>
+// Usage: PLAYWRIGHT_CORE=<dir> [CHROME=<bin>] node chromium.mjs <proxy-port|direct> <steps.json>
 // "direct" skips the proxy: a site that fails there too is not a capture failure.
 // Each step: {"goto": url} | {"click": selector} | {"wait": ms} | {"name": label}
 import { readFileSync } from 'node:fs';
@@ -41,6 +41,7 @@ for (const step of steps) {
     } else if (step.quit) {
       await browser.close();
       console.log(JSON.stringify({ step, note: 'browser closed' }));
+      console.log(JSON.stringify({ browserDownloads: downloads }));
       process.exit(0);
     } else if (step.wait) {
       await page.waitForTimeout(step.wait);

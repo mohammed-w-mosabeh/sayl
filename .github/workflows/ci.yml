@@ -22,6 +22,37 @@ jobs:
       - run: uv run mypy
       - run: uv run pytest
 
+  capture-lab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox]
+        protocol: [http1, http2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install --yes aria2
+      - run: uv sync --locked
+      - name: Install Chromium
+        if: matrix.browser == 'chromium'
+        run: |
+          npm install --no-save --prefix "$RUNNER_TEMP/playwright" playwright-core@1.63.0
+          "$RUNNER_TEMP/playwright/node_modules/.bin/playwright-core" install --with-deps chromium
+          echo "PLAYWRIGHT_CORE=$RUNNER_TEMP/playwright/node_modules/playwright-core" >> "$GITHUB_ENV"
+      - name: Install Firefox
+        if: matrix.browser == 'firefox'
+        uses: browser-actions/setup-firefox@v1
+        with:
+          firefox-version: latest-esr
+      - run: uv run python poc/lab/run_matrix.py ${{ matrix.browser }} ${{ matrix.protocol }}
+
   desktop:
     runs-on: ubuntu-24.04
     steps:
