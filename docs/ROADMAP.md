@@ -32,8 +32,10 @@ Claude Code updates these checkboxes at the end of each phase. Acceptance criter
 - [x] Acceptance: real YouTube 1080p merge, and 5 selected items of a playlist
 
 ## Phase 2 — CLI  (tag `v0.1.0`)
-- [ ] `sayl add | ls | pause | resume | rm | info | watch | config | doctor`
-- [ ] Integration tests against a real daemon
+- [x] `sayl add | ls | pause | resume | refresh | rm | info | watch | config | doctor`
+- [x] Integration tests against a real daemon
+- [x] Speed limits proven locally for all three engines
+- [x] `quality_degraded` warnings for YtDlpEngine
 
 ## Phase 3 — Desktop app
 - [ ] Tauri 2 + Next.js static export, generated API client
@@ -51,6 +53,7 @@ Claude Code updates these checkboxes at the end of each phase. Acceptance criter
 - [ ] System proxy toggle with save/restore
 - [ ] Production addon: detection, stream-first handoff to HybridEngine, bypass list
 - [ ] Real back-pressure in `mitm_adapter.py`, and cancelling the upstream once the daemon finishes
+- [ ] Spool bound: 512 MB default, free-space check, `needs_refresh` when reached
 - [ ] Video grabber + floating bar
 - [ ] Acceptance: >400 MB Google Drive file with the virus-scan page completes under a speed limit
 - [ ] Acceptance: logged-in download forwards cookies and Authorization (lab login server + one real site)

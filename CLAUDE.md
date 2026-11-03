@@ -38,6 +38,7 @@ You handle every git and GitHub operation yourself. The user should never have t
 ```bash
 uv sync                      # install Python deps
 uv run pytest                # tests
+uv run pytest -m timing --no-cov   # speed limit timing, untraced
 uv run ruff check . && uv run ruff format --check .
 uv run mypy daemon cli
 uv run python poc/lab/run_matrix.py chromium http2 --target daemon   # browser lab (chromium|firefox, http1|http2, poc|daemon); Chromium needs PLAYWRIGHT_CORE

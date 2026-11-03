@@ -16,7 +16,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: sudo apt-get update && sudo apt-get install --yes aria2
+      - run: sudo apt-get update && sudo apt-get install --yes aria2 ffmpeg
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -24,6 +24,7 @@ jobs:
       - run: uv run pytest
         env:
           SAYL_LARGE_TEST: "1"
+      - run: uv run pytest -m timing --no-cov
 
   capture-lab:
     runs-on: ubuntu-24.04

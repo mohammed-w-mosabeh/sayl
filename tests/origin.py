@@ -71,6 +71,14 @@ class Origin:
                 writer.write(body)
 
         common = ["Accept-Ranges: bytes", f"ETag: {ETAG}"]
+        if path.startswith("/x3/"):
+            body = BODY * 3
+            if wanted is None:
+                return send("200 OK", body, *common)
+            first, _, last = wanted.removeprefix("bytes=").partition("-")
+            start, end = int(first), int(last or len(body) - 1)
+            content_range = f"Content-Range: bytes {start}-{end}/{len(body)}"
+            return send("206 Partial Content", body[start : end + 1], content_range, *common)
         if path.startswith("/slow/"):
             await self._trickle(writer, wanted)
             return None

@@ -3,7 +3,7 @@ import hashlib
 import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 import yt_dlp
@@ -135,6 +135,8 @@ class FakeDownloader:
     gate: asyncio.Event | None = None
     steps = 3
     error: Exception | None = None
+    warnings: tuple[str, ...] = ()
+    result: ClassVar[dict[str, Any]] = {}
 
     def __init__(self, options: dict[str, Any]) -> None:
         self.options = options
@@ -158,7 +160,9 @@ class FakeDownloader:
         for hook in self.options["postprocessor_hooks"]:
             hook({"status": "started", "info_dict": {}})
             hook({"status": "finished", "info_dict": {"filepath": "/d/v.mp4"}})
-        return {}
+        for message in self.warnings:
+            self.options["logger"].warning(message)
+        return self.result
 
 
 async def settle(engine: YtDlpEngine, engine_id: str) -> Status:

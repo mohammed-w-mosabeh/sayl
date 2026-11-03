@@ -1,6 +1,6 @@
 [project]
 name = "sayl"
-version = "0.0.0"
+version = "0.1.0"
 description = "IDM-class download manager for Linux that captures browser downloads without an extension."
 readme = "docs/SPEC.md"
 requires-python = ">=3.12,<3.13"
@@ -74,7 +74,8 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "--cov=daemon --cov=cli --cov-report=term-missing --cov-fail-under=80"
+addopts = "--cov=daemon --cov=cli --cov-report=term-missing --cov-fail-under=80 -m 'not timing'"
+markers = ["timing: measures elapsed time, so it runs alone without coverage tracing"]
 
 [tool.coverage.run]
 branch = true

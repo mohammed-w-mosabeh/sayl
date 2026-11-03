@@ -118,6 +118,13 @@ class Aria2Engine(Engine):
         self.reader: asyncio.Task[None] | None = None
         self.watchdog: asyncio.Task[None] | None = None
         self.stopping = False
+        self.global_limit = 0
+        self.own_limits: dict[str, int] = {}
+
+    def _effective(self, own: int) -> int:
+        """aria2's overall limit is a moving average, so it lets a burst through after a slow
+        period. A per-download cap has no such window, so the global limit is applied as both."""
+        return min((rate for rate in (own, self.global_limit) if rate), default=0)
 
     async def start(self) -> None:
         await self._spawn()
@@ -213,9 +220,12 @@ class Aria2Engine(Engine):
         }
         if job.filename:
             options["out"] = sanitize(job.filename)
-        if job.speed_limit:
-            options["max-download-limit"] = str(job.speed_limit)
-        return str(await self.rpc("aria2.addUri", [job.url], options))
+        limit = self._effective(job.speed_limit)
+        if limit:
+            options["max-download-limit"] = str(limit)
+        gid = str(await self.rpc("aria2.addUri", [job.url], options))
+        self.own_limits[gid] = job.speed_limit
+        return gid
 
     async def pause(self, engine_id: str) -> None:
         await self.rpc("aria2.forcePause", engine_id)
@@ -227,10 +237,16 @@ class Aria2Engine(Engine):
         await self.rpc("aria2.forceRemove", engine_id)
 
     async def set_speed_limit(self, engine_id: str, limit: int) -> None:
-        await self.rpc("aria2.changeOption", engine_id, {"max-download-limit": str(limit)})
+        self.own_limits[engine_id] = limit
+        effective = str(self._effective(limit))
+        await self.rpc("aria2.changeOption", engine_id, {"max-download-limit": effective})
 
     async def set_global_speed_limit(self, limit: int) -> None:
+        self.global_limit = limit
         await self.rpc("aria2.changeGlobalOption", {"max-overall-download-limit": str(limit)})
+        for gid, own in list(self.own_limits.items()):
+            with contextlib.suppress(EngineError):  # It may have finished already.
+                await self.set_speed_limit(gid, own)
 
     async def refresh_url(self, engine_id: str, new_url: str) -> None:
         details = await self.rpc("aria2.tellStatus", engine_id, ["files"])

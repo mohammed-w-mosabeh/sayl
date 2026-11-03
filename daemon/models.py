@@ -88,6 +88,7 @@ class Download(SQLModel, table=True):
     checksum_expected: str = ""
     checksum_ok: bool | None = None
     error: str = ""
+    warnings_json: str = "{}"
     created_at: datetime = Field(default_factory=utcnow)
     started_at: datetime | None = None
     finished_at: datetime | None = None

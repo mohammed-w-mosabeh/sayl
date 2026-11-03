@@ -12,6 +12,7 @@ from typing import Any, Protocol, cast
 import yt_dlp
 
 from daemon.engines.base import Engine, EngineError, Job, ProbeResult, Progress
+from daemon.engines.quality import assess, is_solver_failure
 from daemon.models import EngineName, Status
 
 
@@ -24,6 +25,26 @@ class Downloader(Protocol):
 
 
 Factory = Callable[[dict[str, Any]], Downloader]
+
+
+class _Logger:
+    """Collects solver failures. yt-dlp only warns about them, and still exits 0."""
+
+    def __init__(self, run: "_Run") -> None:
+        self.run = run
+
+    def debug(self, message: str) -> None:
+        return None
+
+    def info(self, message: str) -> None:
+        return None
+
+    def warning(self, message: str) -> None:
+        if is_solver_failure(message):
+            self.run.solver_failures.append(message.removeprefix("WARNING: "))
+
+    def error(self, message: str) -> None:
+        return None
 
 
 class _Stop(Exception):
@@ -40,6 +61,8 @@ class _Run:
     filename: str = ""
     error: str = ""
     parts: dict[str, tuple[int, int]] = field(default_factory=dict)
+    solver_failures: list[str] = field(default_factory=list)
+    warnings: dict[str, Any] = field(default_factory=dict)
     stop: threading.Event = field(default_factory=threading.Event)
     task: asyncio.Task[None] | None = None
 
@@ -90,6 +113,7 @@ class YtDlpEngine(Engine):
     def __init__(self, factory: Factory = _default_factory) -> None:
         self.factory = factory
         self.runs: dict[str, _Run] = {}
+        self.global_limit = 0
 
     async def probe(self, url: str, headers: dict[str, str]) -> ProbeResult:
         def extract() -> dict[str, Any]:
@@ -107,11 +131,25 @@ class YtDlpEngine(Engine):
             tuple(info.get("formats") or ()),
         )
 
+    def _rate(self, job: Job) -> int:
+        """yt-dlp has no shared limit, so running downloads split the global one equally."""
+        running = sum(run.status is Status.ACTIVE for run in self.runs.values())
+        share = self.global_limit // max(1, running)
+        return min((rate for rate in (job.speed_limit, share) if rate), default=0)
+
+    async def set_global_speed_limit(self, limit: int) -> None:
+        self.global_limit = limit
+        for run in self.runs.values():
+            if run.status is Status.ACTIVE:
+                await self._halt(run, Status.PAUSED)
+                self._start(run)
+
     def _options(self, run: _Run) -> dict[str, Any]:
         job = run.job
         options: dict[str, Any] = {
             "quiet": True,
             "noprogress": True,
+            "logger": _Logger(run),
             "continuedl": True,
             "paths": {"home": job.dest_dir},
             "progress_hooks": [lambda update: self._on_progress(run, update)],
@@ -120,8 +158,9 @@ class YtDlpEngine(Engine):
         }
         if job.format_id:
             options["format"] = job.format_id
-        if job.speed_limit:
-            options["ratelimit"] = job.speed_limit
+        rate = self._rate(job)
+        if rate:
+            options["ratelimit"] = rate
         return {**options, **media_options(job)}
 
     def _on_progress(self, run: _Run, update: dict[str, Any]) -> None:
@@ -145,7 +184,9 @@ class YtDlpEngine(Engine):
 
     def _work(self, run: _Run) -> None:
         with self.factory(self._options(run)) as downloader:
-            downloader.extract_info(run.job.url, download=True)
+            info = downloader.extract_info(run.job.url, download=True)
+        found = assess(run.job, info, run.solver_failures)
+        run.warnings = {"quality_degraded": found} if found else {}
 
     async def _run(self, run: _Run) -> None:
         try:
@@ -206,4 +247,6 @@ class YtDlpEngine(Engine):
 
     async def status(self, engine_id: str) -> Progress:
         run = self._get(engine_id)
-        return Progress(run.status, run.total, run.done, run.speed, 1, run.filename, run.error)
+        return Progress(
+            run.status, run.total, run.done, run.speed, 1, run.filename, run.error, run.warnings
+        )

@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import json
 import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
@@ -112,11 +113,12 @@ class Services:
 
 def public(row: Download) -> dict[str, Any]:
     """Everything a client may see. Stored headers never leave the daemon."""
-    return row.model_dump(exclude={"headers_enc"}, mode="json")
+    fields = row.model_dump(exclude={"headers_enc", "warnings_json"}, mode="json")
+    return {**fields, "warnings": json.loads(row.warnings_json)}
 
 
 def create_app(services: Services) -> FastAPI:
-    app = FastAPI(title="sayld", version="0.0.0")
+    app = FastAPI(title="sayld", version="0.1.0")
     app.add_middleware(RejectWebOrigins)
     store, queue = services.store, services.queue
 

@@ -13,6 +13,7 @@ from daemon.config import Config
 from daemon.engines.aria2 import Aria2Engine
 from daemon.engines.base import Engine, EngineError, Job, Progress, StreamInfo
 from daemon.engines.hybrid import NEEDS_REFRESH, HybridEngine
+from daemon.engines.ytdlp import YtDlpEngine
 from daemon.events import EventBus
 from daemon.models import Download, EngineName, Status, utcnow
 from daemon.router import route
@@ -77,6 +78,8 @@ class QueueManager:
         self.recoveries: set[asyncio.Task[None]] = set()
 
     async def start(self) -> None:
+        saved = (await run(self.store.settings)).get("speed_limit", self.config.speed_limit)
+        await self.set_global_speed_limit(int(saved))
         await self.recover()
         self.task = asyncio.create_task(self._loop())
         # The first extractor scan takes seconds, so do not make the first download wait for it.
@@ -166,10 +169,21 @@ class QueueManager:
             await self._failed(row, progress.error or "download failed")
         elif progress.status in FINISHED:
             await run(
-                self.store.update, row.id, **fields, status=progress.status, finished_at=utcnow()
+                self.store.update,
+                row.id,
+                **fields,
+                status=progress.status,
+                finished_at=utcnow(),
+                warnings_json=json.dumps(progress.warnings),
             )
             if progress.status is Status.COMPLETED:
                 self.bus.publish("download.completed", id=row.id)
+            if "quality_degraded" in progress.warnings:
+                self.bus.publish(
+                    "download.quality_degraded",
+                    id=row.id,
+                    warning=progress.warnings["quality_degraded"],
+                )
             self.poke()
         else:
             await run(self.store.update, row.id, **fields, status=progress.status)
@@ -243,7 +257,7 @@ class QueueManager:
         for engine in self.engines.values():
             if isinstance(engine, HybridEngine):
                 engine.limiter.set_rate(limit)
-            elif isinstance(engine, Aria2Engine):
+            elif isinstance(engine, Aria2Engine | YtDlpEngine):
                 await engine.set_global_speed_limit(limit)
 
     async def refresh_url(self, row: Download, url: str, headers: dict[str, str]) -> None:

@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from typing import Any
 
 from daemon.models import EngineName, Status
 
@@ -63,6 +64,7 @@ class Progress:
     connections: int = 0
     filename: str = ""
     error: str = ""
+    warnings: dict[str, Any] = field(default_factory=dict)
 
 
 class Engine(ABC):
