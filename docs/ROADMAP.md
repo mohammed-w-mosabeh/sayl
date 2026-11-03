@@ -38,10 +38,11 @@ Claude Code updates these checkboxes at the end of each phase. Acceptance criter
 - [x] `quality_degraded` warnings for YtDlpEngine
 
 ## Phase 3 — Desktop app
-- [ ] Tauri 2 + Next.js static export, generated API client
-- [ ] Downloads list, add dialog with quality picker, details view
-- [ ] Settings, categories, i18n (ar RTL + en), themes
-- [ ] Tray, notifications, floating drop target
+- [x] Tauri 2 + Next.js static export, generated API client
+- [x] Downloads list, add dialog with quality picker, details view
+- [x] Settings, categories, i18n (ar RTL + en), themes
+- [x] Tray, notifications, floating drop target
+- [x] Acceptance: the UI renders correctly in Arabic RTL (`desktop/scripts/ui_check.py`)
 
 ## Phase 4 — Clipboard watcher
 - [ ] Session detection

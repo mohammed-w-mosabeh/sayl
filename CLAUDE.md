@@ -46,5 +46,9 @@ uv run python -m daemon.openapi > docs/openapi.json                  # export th
 uv run python poc/lab/real_youtube.py                                # real yt-dlp test: 1080p video + 5 playlist items, 2 MB/s limit
 uv run sayld                 # run the daemon
 uv run sayl doctor           # check aria2c, ffmpeg, JS runtime, permissions
-cd desktop && pnpm install && pnpm tauri dev
+cd desktop && pnpm install && pnpm tauri dev   # needs dev_origins = ["http://localhost:3210"] in config.toml
+cd desktop && pnpm lint && pnpm typecheck && pnpm test
+cd desktop && pnpm api                        # regenerate the TypeScript client after exporting the OpenAPI schema
+cd desktop && pnpm build && cd .. && uv run python desktop/scripts/ui_check.py   # UI in en/ar/dark against a real sayld (PLAYWRIGHT_CORE, CHROME)
+cd desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test   # needs Rust + libwebkit2gtk-4.1-dev; CI runs it
 ```

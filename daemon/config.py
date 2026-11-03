@@ -1,6 +1,7 @@
 """XDG paths, config.toml, and the API bearer token."""
 
 import os
+import re
 import secrets
 import tomllib
 from dataclasses import dataclass, fields
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_ACCELERATE_MIN_BYTES = 20 * 1024 * 1024
+LOOPBACK_ORIGIN = re.compile(r"http://(127\.0\.0\.1|localhost):\d{1,5}")
 
 
 @dataclass(frozen=True)
@@ -57,10 +59,16 @@ class Config:
     speed_limit: int = 0
     connections: int = 16
     accelerate_min_bytes: int = DEFAULT_ACCELERATE_MIN_BYTES
+    # Extra origins allowed to call the API, for `pnpm tauri dev` only. Loopback HTTP only.
+    dev_origins: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.host != "127.0.0.1":
             raise ValueError("all local services bind to 127.0.0.1 only")
+        object.__setattr__(self, "dev_origins", tuple(self.dev_origins))
+        for origin in self.dev_origins:
+            if not LOOPBACK_ORIGIN.fullmatch(origin):
+                raise ValueError(f"dev_origins accepts only http://localhost:<port>, not {origin}")
 
 
 def load_config(paths: Paths) -> Config:

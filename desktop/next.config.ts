@@ -1,0 +1,12 @@
+import type { NextConfig } from "next";
+
+// Tauri serves the static export; the app has no server features.
+const config: NextConfig = {
+  output: "export",
+  trailingSlash: true,
+  images: { unoptimized: true },
+  reactStrictMode: true,
+  devIndicators: false,
+};
+
+export default config;

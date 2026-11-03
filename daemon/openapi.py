@@ -6,10 +6,11 @@ from typing import Any
 from unittest.mock import Mock
 
 from daemon.api import create_app
+from daemon.config import Config
 
 
 def schema() -> dict[str, Any]:
-    result: dict[str, Any] = create_app(Mock()).openapi()
+    result: dict[str, Any] = create_app(Mock(config=Config())).openapi()
     return result
 
 

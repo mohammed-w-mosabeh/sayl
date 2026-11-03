@@ -37,3 +37,12 @@ def test_load_config_ignores_unknown_keys(tmp_path: Path) -> None:
 def test_refuses_a_non_loopback_host() -> None:
     with pytest.raises(ValueError, match=r"127\.0\.0\.1"):
         Config(host="0.0.0.0")  # noqa: S104 - the value under test
+
+
+def test_dev_origins_are_loopback_only(tmp_path: Path) -> None:
+    where = paths(tmp_path)
+    (where.config / "config.toml").write_text('dev_origins = ["http://localhost:3000"]\n')
+    assert load_config(where).dev_origins == ("http://localhost:3000",)
+    for bad in ("https://evil.example", "http://localhost.evil.example:1", "http://[::1]:3000"):
+        with pytest.raises(ValueError, match="dev_origins"):
+            Config(dev_origins=(bad,))

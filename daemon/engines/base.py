@@ -53,6 +53,10 @@ class ProbeResult:
     resumable: bool = False
     extractor: str = ""
     formats: tuple[dict[str, object], ...] = ()
+    entries: tuple[dict[str, object], ...] = ()
+    subtitles: tuple[str, ...] = ()
+    duration: float | None = None
+    thumbnail: str = ""
 
 
 @dataclass(frozen=True)

@@ -6,16 +6,18 @@ import json
 import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from starlette.requests import ClientDisconnect
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from daemon.config import Config
-from daemon.engines.base import Engine, EngineError, StreamInfo
+from daemon.engines.base import Engine, EngineError, ProbeResult, StreamInfo
 from daemon.engines.hybrid import may_resume
 from daemon.events import EventBus
 from daemon.filenames import filename_from_response, sanitize
@@ -25,6 +27,7 @@ from daemon.router import route
 from daemon.store import Store, run
 from daemon.vault import Vault
 
+VERSION = "0.1.0"
 APP_ORIGINS = frozenset({"tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"})
 bearer = HTTPBearer(auto_error=False)
 
@@ -32,14 +35,15 @@ bearer = HTTPBearer(auto_error=False)
 class RejectWebOrigins:
     """Stops a web page from reaching the daemon, for HTTP and WebSocket alike."""
 
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, allowed: frozenset[str] = APP_ORIGINS) -> None:
         self.app = app
+        self.allowed = allowed
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] in ("http", "websocket"):
             headers = dict(scope["headers"])
             origin = headers.get(b"origin", b"").decode()
-            if origin and origin not in APP_ORIGINS:
+            if origin and origin not in self.allowed:
                 await self._refuse(scope, send)
                 return
         await self.app(scope, receive, send)
@@ -99,6 +103,62 @@ class Probe(BaseModel):
     headers: dict[str, str] = {}
 
 
+class DownloadOut(BaseModel):
+    """A download as clients see it. Stored headers never leave the daemon."""
+
+    id: str
+    url: str
+    final_url: str
+    page_url: str
+    filename: str
+    dest_dir: str
+    category_id: str | None
+    engine: EngineName
+    engine_ref: str
+    status: Status
+    total_bytes: int
+    done_bytes: int
+    speed: int
+    eta: int
+    connections: int
+    priority: int
+    speed_limit: int
+    format_id: str
+    media_json: str
+    etag: str
+    last_modified: str
+    resumable: bool
+    retries: int
+    checksum_algo: str
+    checksum_expected: str
+    checksum_ok: bool | None
+    error: str
+    warnings: dict[str, Any]
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class ProbeOut(BaseModel):
+    url: str
+    filename: str
+    total: int | None
+    resumable: bool
+    extractor: str
+    formats: list[dict[str, Any]]
+    entries: list[dict[str, Any]]
+    subtitles: list[str]
+    duration: float | None
+    thumbnail: str
+    engine: EngineName
+
+
+class InfoOut(BaseModel):
+    version: str
+    default_dir: str
+    max_concurrent: int
+
+
 @dataclass
 class Services:
     store: Store
@@ -111,15 +171,24 @@ class Services:
     default_dir: str
 
 
-def public(row: Download) -> dict[str, Any]:
+def public(row: Download) -> DownloadOut:
     """Everything a client may see. Stored headers never leave the daemon."""
-    fields = row.model_dump(exclude={"headers_enc", "warnings_json"}, mode="json")
-    return {**fields, "warnings": json.loads(row.warnings_json)}
+    fields = row.model_dump(exclude={"headers_enc", "warnings_json"})
+    return DownloadOut(**fields, warnings=json.loads(row.warnings_json))
 
 
 def create_app(services: Services) -> FastAPI:
-    app = FastAPI(title="sayld", version="0.1.0")
-    app.add_middleware(RejectWebOrigins)
+    app = FastAPI(title="sayld", version=VERSION)
+    allowed = APP_ORIGINS | frozenset(services.config.dev_origins)
+    # The webview runs on its own origin, so it needs CORS; the outer check runs first.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=sorted(allowed),
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allow_headers=["authorization", "content-type"],
+        max_age=600,
+    )
+    app.add_middleware(RejectWebOrigins, allowed=allowed)
     store, queue = services.store, services.queue
 
     def authorized(token: str) -> bool:
@@ -141,8 +210,13 @@ def create_app(services: Services) -> FastAPI:
 
     Found = Annotated[Download, Depends(found)]
 
+    def changed(row: Download) -> DownloadOut:
+        """Tell every client, so a pause from the CLI shows up in the desktop app."""
+        services.bus.publish("download.updated", id=row.id, status=row.status)
+        return public(row)
+
     @app.post("/downloads", dependencies=auth, status_code=201)
-    async def add_download(body: AddDownload) -> dict[str, Any]:
+    async def add_download(body: AddDownload) -> DownloadOut:
         headers = dict(body.headers)
         if body.cookies:
             headers["Cookie"] = body.cookies
@@ -174,7 +248,7 @@ def create_app(services: Services) -> FastAPI:
         return public(row)
 
     @app.post("/downloads/attach", dependencies=auth, status_code=201)
-    async def attach_download(body: AttachDownload) -> dict[str, Any]:
+    async def attach_download(body: AttachDownload) -> DownloadOut:
         """Register a captured response. The origin is not contacted."""
         lower = {name.lower(): value for name, value in body.response_headers.items()}
         length = lower.get("content-length", "")
@@ -208,7 +282,7 @@ def create_app(services: Services) -> FastAPI:
         return public(row)
 
     @app.put("/downloads/{download_id}/stream", dependencies=auth)
-    async def put_stream(row: Found, request: Request) -> dict[str, Any]:
+    async def put_stream(row: Found, request: Request) -> DownloadOut:
         """Hand over the response body from offset 0. It may be used once."""
         if row.engine is not EngineName.HYBRID or row.status is not Status.PROBING:
             raise HTTPException(status.HTTP_409_CONFLICT, "this download takes no stream")
@@ -225,15 +299,15 @@ def create_app(services: Services) -> FastAPI:
         return public(await found(row.id))
 
     @app.get("/downloads", dependencies=auth)
-    async def list_downloads(state: Status | None = None) -> list[dict[str, Any]]:
+    async def list_downloads(state: Status | None = None) -> list[DownloadOut]:
         return [public(row) for row in await run(store.downloads, state)]
 
     @app.get("/downloads/{download_id}", dependencies=auth)
-    async def get_download(row: Found) -> dict[str, Any]:
+    async def get_download(row: Found) -> DownloadOut:
         return public(row)
 
     @app.patch("/downloads/{download_id}", dependencies=auth)
-    async def patch_download(row: Found, body: PatchDownload) -> dict[str, Any]:
+    async def patch_download(row: Found, body: PatchDownload) -> DownloadOut:
         if body.speed_limit is not None:
             await queue.set_speed_limit(row, body.speed_limit)
         fields: dict[str, Any] = {}
@@ -242,41 +316,50 @@ def create_app(services: Services) -> FastAPI:
         if body.filename is not None:
             fields["filename"] = sanitize(body.filename)
         await run(store.update, row.id, **fields)
-        return public(await found(row.id))
+        return changed(await found(row.id))
 
     @app.delete("/downloads/{download_id}", dependencies=auth, status_code=204)
     async def delete_download(row: Found) -> None:
         await queue.cancel(row)
         await run(store.delete_download, row.id)
+        services.bus.publish("download.removed", id=row.id)
 
-    async def act(row: Download, action: Callable[[Download], Awaitable[None]]) -> dict[str, Any]:
+    async def act(row: Download, action: Callable[[Download], Awaitable[None]]) -> DownloadOut:
         try:
             await action(row)
         except EngineError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
-        return public(await found(row.id))
+        return changed(await found(row.id))
 
     @app.post("/downloads/{download_id}/pause", dependencies=auth)
-    async def pause(row: Found) -> dict[str, Any]:
+    async def pause(row: Found) -> DownloadOut:
         return await act(row, queue.pause)
 
     @app.post("/downloads/{download_id}/resume", dependencies=auth)
-    async def resume(row: Found) -> dict[str, Any]:
+    async def resume(row: Found) -> DownloadOut:
         return await act(row, queue.resume)
 
     @app.post("/downloads/{download_id}/refresh-url", dependencies=auth)
-    async def refresh_url(row: Found, body: RefreshUrl) -> dict[str, Any]:
+    async def refresh_url(row: Found, body: RefreshUrl) -> DownloadOut:
         await queue.refresh_url(row, body.url, body.headers)
-        return public(await found(row.id))
+        return changed(await found(row.id))
 
     @app.post("/probe", dependencies=auth)
-    async def probe(body: Probe) -> dict[str, Any]:
+    async def probe(body: Probe) -> ProbeOut:
         name = await run(route, body.url)
         try:
-            result = await services.engines[name].probe(body.url, body.headers)
+            result: ProbeResult = await services.engines[name].probe(body.url, body.headers)
         except EngineError as error:
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(error)) from error
-        return {**result.__dict__, "engine": name}
+        return ProbeOut(**result.__dict__, engine=name)
+
+    @app.get("/info", dependencies=auth)
+    async def info() -> InfoOut:
+        return InfoOut(
+            version=VERSION,
+            default_dir=services.default_dir,
+            max_concurrent=services.config.max_concurrent,
+        )
 
     @app.get("/settings", dependencies=auth)
     async def get_settings() -> dict[str, Any]:

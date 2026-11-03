@@ -192,6 +192,209 @@
     "title": "Category",
     "type": "object"
    },
+   "DownloadOut": {
+    "description": "A download as clients see it. Stored headers never leave the daemon.",
+    "properties": {
+     "category_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Category Id"
+     },
+     "checksum_algo": {
+      "title": "Checksum Algo",
+      "type": "string"
+     },
+     "checksum_expected": {
+      "title": "Checksum Expected",
+      "type": "string"
+     },
+     "checksum_ok": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Checksum Ok"
+     },
+     "connections": {
+      "title": "Connections",
+      "type": "integer"
+     },
+     "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+     },
+     "dest_dir": {
+      "title": "Dest Dir",
+      "type": "string"
+     },
+     "done_bytes": {
+      "title": "Done Bytes",
+      "type": "integer"
+     },
+     "engine": {
+      "$ref": "#/components/schemas/EngineName"
+     },
+     "engine_ref": {
+      "title": "Engine Ref",
+      "type": "string"
+     },
+     "error": {
+      "title": "Error",
+      "type": "string"
+     },
+     "eta": {
+      "title": "Eta",
+      "type": "integer"
+     },
+     "etag": {
+      "title": "Etag",
+      "type": "string"
+     },
+     "filename": {
+      "title": "Filename",
+      "type": "string"
+     },
+     "final_url": {
+      "title": "Final Url",
+      "type": "string"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     },
+     "format_id": {
+      "title": "Format Id",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "last_modified": {
+      "title": "Last Modified",
+      "type": "string"
+     },
+     "media_json": {
+      "title": "Media Json",
+      "type": "string"
+     },
+     "page_url": {
+      "title": "Page Url",
+      "type": "string"
+     },
+     "priority": {
+      "title": "Priority",
+      "type": "integer"
+     },
+     "resumable": {
+      "title": "Resumable",
+      "type": "boolean"
+     },
+     "retries": {
+      "title": "Retries",
+      "type": "integer"
+     },
+     "speed": {
+      "title": "Speed",
+      "type": "integer"
+     },
+     "speed_limit": {
+      "title": "Speed Limit",
+      "type": "integer"
+     },
+     "started_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started At"
+     },
+     "status": {
+      "$ref": "#/components/schemas/Status"
+     },
+     "total_bytes": {
+      "title": "Total Bytes",
+      "type": "integer"
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     },
+     "warnings": {
+      "additionalProperties": true,
+      "title": "Warnings",
+      "type": "object"
+     }
+    },
+    "required": [
+     "id",
+     "url",
+     "final_url",
+     "page_url",
+     "filename",
+     "dest_dir",
+     "category_id",
+     "engine",
+     "engine_ref",
+     "status",
+     "total_bytes",
+     "done_bytes",
+     "speed",
+     "eta",
+     "connections",
+     "priority",
+     "speed_limit",
+     "format_id",
+     "media_json",
+     "etag",
+     "last_modified",
+     "resumable",
+     "retries",
+     "checksum_algo",
+     "checksum_expected",
+     "checksum_ok",
+     "error",
+     "warnings",
+     "created_at",
+     "started_at",
+     "finished_at"
+    ],
+    "title": "DownloadOut",
+    "type": "object"
+   },
+   "EngineName": {
+    "enum": [
+     "aria2",
+     "ytdlp",
+     "hybrid"
+    ],
+    "title": "EngineName",
+    "type": "string"
+   },
    "HTTPValidationError": {
     "properties": {
      "detail": {
@@ -203,6 +406,29 @@
      }
     },
     "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "InfoOut": {
+    "properties": {
+     "default_dir": {
+      "title": "Default Dir",
+      "type": "string"
+     },
+     "max_concurrent": {
+      "title": "Max Concurrent",
+      "type": "integer"
+     },
+     "version": {
+      "title": "Version",
+      "type": "string"
+     }
+    },
+    "required": [
+     "version",
+     "default_dir",
+     "max_concurrent"
+    ],
+    "title": "InfoOut",
     "type": "object"
    },
    "PatchDownload": {
@@ -263,6 +489,93 @@
      "url"
     ],
     "title": "Probe",
+    "type": "object"
+   },
+   "ProbeOut": {
+    "properties": {
+     "duration": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Duration"
+     },
+     "engine": {
+      "$ref": "#/components/schemas/EngineName"
+     },
+     "entries": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Entries",
+      "type": "array"
+     },
+     "extractor": {
+      "title": "Extractor",
+      "type": "string"
+     },
+     "filename": {
+      "title": "Filename",
+      "type": "string"
+     },
+     "formats": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Formats",
+      "type": "array"
+     },
+     "resumable": {
+      "title": "Resumable",
+      "type": "boolean"
+     },
+     "subtitles": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Subtitles",
+      "type": "array"
+     },
+     "thumbnail": {
+      "title": "Thumbnail",
+      "type": "string"
+     },
+     "total": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total"
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     }
+    },
+    "required": [
+     "url",
+     "filename",
+     "total",
+     "resumable",
+     "extractor",
+     "formats",
+     "entries",
+     "subtitles",
+     "duration",
+     "thumbnail",
+     "engine"
+    ],
+    "title": "ProbeOut",
     "type": "object"
    },
    "RefreshUrl": {
@@ -575,8 +888,7 @@
        "application/json": {
         "schema": {
          "items": {
-          "additionalProperties": true,
-          "type": "object"
+          "$ref": "#/components/schemas/DownloadOut"
          },
          "title": "Response List Downloads Downloads Get",
          "type": "array"
@@ -620,9 +932,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "additionalProperties": true,
-         "title": "Response Add Download Downloads Post",
-         "type": "object"
+         "$ref": "#/components/schemas/DownloadOut"
         }
        }
       },
@@ -666,9 +976,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "additionalProperties": true,
-         "title": "Response Attach Download Downloads Attach Post",
-         "type": "object"
+         "$ref": "#/components/schemas/DownloadOut"
         }
        }
       },
@@ -747,9 +1055,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "additionalProperties": true,
-         "title": "Response Get Download Downloads  Download Id  Get",
-         "type": "object"
+         "$ref": "#/components/schemas/DownloadOut"
         }
        }
       },
@@ -801,9 +1107,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "additionalProperties": true,
-         "title": "Response Patch Download Downloads  Download Id  Patch",
-         "type": "object"
+         "$ref": "#/components/schemas/DownloadOut"
         }
        }
       },
@@ -847,9 +1151,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "additionalProperties": true,
-         "title": "Response Pause Downloads  Download Id  Pause Post",
-         "type": "object"
+         "$ref": "#/components/schemas/DownloadOut"
         }
        }
       },
@@ -903,9 +1205,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "additionalProperties": true,
-         "title": "Response Refresh Url Downloads  Download Id  Refresh Url Post",
-         "type": "object"
+         "$ref": "#/components/schemas/DownloadOut"
         }
        }
       },
@@ -949,9 +1249,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "additionalProperties": true,
-         "title": "Response Resume Downloads  Download Id  Resume Post",
-         "type": "object"
+         "$ref": "#/components/schemas/DownloadOut"
         }
        }
       },
@@ -996,9 +1294,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "additionalProperties": true,
-         "title": "Response Put Stream Downloads  Download Id  Stream Put",
-         "type": "object"
+         "$ref": "#/components/schemas/DownloadOut"
         }
        }
       },
@@ -1023,6 +1319,29 @@
     "summary": "Put Stream"
    }
   },
+  "/info": {
+   "get": {
+    "operationId": "info_info_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/InfoOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Info"
+   }
+  },
   "/probe": {
    "post": {
     "operationId": "probe_probe_post",
@@ -1041,9 +1360,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "additionalProperties": true,
-         "title": "Response Probe Probe Post",
-         "type": "object"
+         "$ref": "#/components/schemas/ProbeOut"
         }
        }
       },

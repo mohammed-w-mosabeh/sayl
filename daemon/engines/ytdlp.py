@@ -103,6 +103,52 @@ def media_options(job: Job) -> dict[str, Any]:
     return options
 
 
+FORMAT_FIELDS = (
+    "format_id",
+    "format_note",
+    "ext",
+    "protocol",
+    "width",
+    "height",
+    "fps",
+    "vcodec",
+    "acodec",
+    "abr",
+    "tbr",
+    "filesize",
+    "filesize_approx",
+    "dynamic_range",
+    "has_drm",
+)
+ENTRY_FIELDS = ("id", "title", "duration", "url")
+
+
+def public_format(raw: dict[str, Any]) -> dict[str, object]:
+    """Formats carry per-format `http_headers` and cookies; only these fields leave the daemon."""
+    return {key: raw[key] for key in FORMAT_FIELDS if raw.get(key) is not None}
+
+
+def probe_result(url: str, info: dict[str, Any]) -> ProbeResult:
+    entries = tuple(
+        {"index": index, **{key: entry[key] for key in ENTRY_FIELDS if entry.get(key) is not None}}
+        for index, entry in enumerate(info.get("entries") or (), start=1)
+        if isinstance(entry, dict)
+    )
+    duration = info.get("duration")
+    return ProbeResult(
+        url,
+        str(info.get("title", "")),
+        info.get("filesize_approx"),
+        True,
+        str(info.get("extractor", "")),
+        tuple(public_format(raw) for raw in info.get("formats") or () if isinstance(raw, dict)),
+        entries,
+        tuple(sorted(info.get("subtitles") or {})),
+        float(duration) if isinstance(duration, int | float) else None,
+        str(info.get("thumbnail") or ""),
+    )
+
+
 def _default_factory(options: dict[str, Any]) -> Downloader:
     return cast(Downloader, yt_dlp.YoutubeDL(cast(Any, options)))
 
@@ -117,19 +163,17 @@ class YtDlpEngine(Engine):
 
     async def probe(self, url: str, headers: dict[str, str]) -> ProbeResult:
         def extract() -> dict[str, Any]:
-            options = {"quiet": True, "http_headers": headers, "js_runtimes": js_runtimes()}
+            options = {
+                "quiet": True,
+                "http_headers": headers,
+                "js_runtimes": js_runtimes(),
+                "extract_flat": "in_playlist",  # List the items; formats come per item.
+            }
             with self.factory(options) as downloader:
                 return downloader.extract_info(url, download=False)
 
         info = await asyncio.to_thread(extract)
-        return ProbeResult(
-            url,
-            str(info.get("title", "")),
-            info.get("filesize_approx"),
-            True,
-            str(info.get("extractor", "")),
-            tuple(info.get("formats") or ()),
-        )
+        return probe_result(url, info)
 
     def _rate(self, job: Job) -> int:
         """yt-dlp has no shared limit, so running downloads split the global one equally."""

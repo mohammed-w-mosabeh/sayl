@@ -74,3 +74,42 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter sayl-desktop lint
       - run: pnpm --filter sayl-desktop typecheck
+      - run: pnpm --filter sayl-desktop test
+      - name: Generated API client matches docs/openapi.json
+        run: pnpm --filter sayl-desktop api && git diff --exit-code desktop/src/lib/api/schema.d.ts
+      - run: pnpm --filter sayl-desktop build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-out
+          path: desktop/out
+          retention-days: 3
+
+  tauri:
+    runs-on: ubuntu-24.04
+    needs: desktop
+    defaults:
+      run:
+        working-directory: desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v7
+      - run: >-
+          sudo apt-get update && sudo apt-get install --yes libwebkit2gtk-4.1-dev
+          libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      # generate_context! embeds the static export, so the shell compiles against the real one.
+      - uses: actions/download-artifact@v8
+        with:
+          name: desktop-out
+          path: desktop/out
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+        if: success() || failure()
+      - run: cargo test --locked
+        if: success() || failure()

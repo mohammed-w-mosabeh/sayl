@@ -52,3 +52,7 @@ tests/fixtures/large/
 
 # Proof of concept runtime state
 poc/.state/
+desktop/next-env.d.ts
+desktop/*.tsbuildinfo
+desktop/src-tauri/gen/
+desktop/screenshots/

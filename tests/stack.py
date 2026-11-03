@@ -31,7 +31,7 @@ class Stack:
 
 
 @asynccontextmanager
-async def running_stack(root: Path, **overrides: int) -> AsyncIterator[Stack]:
+async def running_stack(root: Path, **overrides: object) -> AsyncIterator[Stack]:
     paths = Paths.from_env({"HOME": str(root)})
     values = {"connections": 4, "accelerate_min_bytes": 1024, "download_dir": str(root / "out")}
     daemon = await build(paths, Config(**{**values, **overrides}))  # type: ignore[arg-type]

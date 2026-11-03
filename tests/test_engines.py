@@ -10,7 +10,13 @@ import yt_dlp
 
 from daemon.engines.aria2 import Aria2Engine, command_line, file_allocation
 from daemon.engines.base import AttachNotSupportedError, EngineError, Job
-from daemon.engines.ytdlp import YtDlpEngine, js_runtimes, media_options, supported_extractor
+from daemon.engines.ytdlp import (
+    YtDlpEngine,
+    js_runtimes,
+    media_options,
+    probe_result,
+    supported_extractor,
+)
 from daemon.models import EngineName, Status
 from daemon.router import route
 from tests.origin import SHA256, SIZE, Origin
@@ -180,6 +186,31 @@ async def test_ytdlp_probe_and_download() -> None:
     assert await settle(engine, engine_id) is Status.COMPLETED
     progress = await engine.status(engine_id)
     assert (progress.done, progress.total, progress.filename) == (5, 5, "v.mp4")
+
+
+def test_ytdlp_probe_keeps_headers_and_cookies_inside() -> None:
+    info = {
+        "title": "List",
+        "extractor": "youtube:tab",
+        "duration": 61,
+        "subtitles": {"en": [], "ar": []},
+        "formats": [
+            {
+                "format_id": "137",
+                "height": 1080,
+                "vcodec": "avc1",
+                "http_headers": {"Cookie": "SID=secret"},
+                "cookies": "SID=secret",
+                "url": "https://signed.example/x",
+            }
+        ],
+        "entries": [{"id": "a", "title": "One", "ie_key": "Youtube"}, None],
+    }
+    result = probe_result("http://v", info)
+    assert result.formats == ({"format_id": "137", "height": 1080, "vcodec": "avc1"},)
+    assert result.entries == ({"index": 1, "id": "a", "title": "One"},)
+    assert (result.subtitles, result.duration) == (("ar", "en"), 61.0)
+    assert "secret" not in repr(result)
 
 
 async def test_ytdlp_failure_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:

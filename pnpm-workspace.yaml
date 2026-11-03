@@ -1,2 +1,4 @@
 packages:
   - desktop
+allowBuilds:
+  unrs-resolver: false

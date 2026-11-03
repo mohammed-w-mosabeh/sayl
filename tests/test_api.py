@@ -9,7 +9,8 @@ import httpx
 import pytest
 import websockets
 
-from daemon.models import PolicyReason
+from daemon.api import VERSION, DownloadOut
+from daemon.models import Download, PolicyReason
 from daemon.openapi import schema
 from daemon.vault import Vault
 from tests.origin import BODY, ETAG, SHA256, SIZE, TOKEN, Origin, open_stream
@@ -163,6 +164,38 @@ async def test_web_origins_are_rejected(stack: Stack) -> None:
     assert app.status_code == 200
 
 
+async def test_the_app_origin_gets_cors_and_a_web_origin_does_not(stack: Stack) -> None:
+    preflight = {
+        "Origin": "tauri://localhost",
+        "Access-Control-Request-Method": "DELETE",
+        "Access-Control-Request-Headers": "authorization",
+    }
+    allowed = await stack.client.options("/downloads/x", headers=preflight)
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "tauri://localhost"
+    web = await stack.client.options("/downloads/x", headers={**preflight, "Origin": "http://a.b"})
+    assert web.status_code == 403
+    dev = await stack.client.get("/downloads", headers={"Origin": "http://localhost:3000"})
+    assert dev.status_code == 403  # Dev origins are off unless config.toml lists them.
+
+
+async def test_dev_origins_are_opt_in(tmp_path: Path) -> None:
+    async with running_stack(tmp_path, dev_origins=("http://localhost:3000",)) as stack:
+        dev = await stack.client.get("/downloads", headers={"Origin": "http://localhost:3000"})
+        assert dev.status_code == 200
+        assert dev.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_download_out_lists_every_public_column() -> None:
+    columns = set(Download.model_fields) - {"headers_enc", "warnings_json"}
+    assert set(DownloadOut.model_fields) == columns | {"warnings"}
+
+
+async def test_info(stack: Stack) -> None:
+    info = (await stack.client.get("/info")).json()
+    assert info == {"version": VERSION, "default_dir": str(stack.downloads), "max_concurrent": 3}
+
+
 async def test_stored_headers_are_encrypted_and_never_returned(stack: Stack) -> None:
     created = await stack.client.post(
         "/downloads",
@@ -276,7 +309,19 @@ async def test_websocket_events_and_auth(stack: Stack, origin: Origin) -> None:
         seen = set()
         while "download.completed" not in seen:
             seen.add(json.loads(await asyncio.wait_for(socket.recv(), 15))["event"])
-    assert "download.added" in seen
+        assert "download.added" in seen
+
+        paused = await stack.client.post(
+            "/downloads", json={"url": "http://x", "start_paused": True}
+        )
+        download_id = paused.json()["id"]
+        await stack.client.patch(f"/downloads/{download_id}", json={"priority": 2})
+        await stack.client.delete(f"/downloads/{download_id}")
+        events = []
+        while not events or events[-1]["event"] != "download.removed":
+            events.append(json.loads(await asyncio.wait_for(socket.recv(), 15)))
+        assert {"event": "download.updated", "id": download_id, "status": "paused"} in events
+        assert events[-1] == {"event": "download.removed", "id": download_id}
 
 
 def test_published_schema_is_current() -> None:

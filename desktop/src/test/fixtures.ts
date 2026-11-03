@@ -1,0 +1,38 @@
+import type { Download } from "@/lib/api/client";
+
+export function download(fields: Partial<Download> = {}): Download {
+  return {
+    id: "d1",
+    url: "https://example.com/files/ubuntu.iso",
+    final_url: "",
+    page_url: "",
+    filename: "ubuntu.iso",
+    dest_dir: "/home/u/Downloads",
+    category_id: null,
+    engine: "aria2",
+    engine_ref: "",
+    status: "active",
+    total_bytes: 4 * 1024 ** 3,
+    done_bytes: 1024 ** 3,
+    speed: 2 * 1024 ** 2,
+    eta: 0,
+    connections: 16,
+    priority: 0,
+    speed_limit: 0,
+    format_id: "",
+    media_json: "{}",
+    etag: "",
+    last_modified: "",
+    resumable: true,
+    retries: 0,
+    checksum_algo: "",
+    checksum_expected: "",
+    checksum_ok: null,
+    error: "",
+    warnings: {},
+    created_at: "2026-11-03T10:00:00",
+    started_at: null,
+    finished_at: null,
+    ...fields,
+  };
+}
