@@ -52,6 +52,11 @@ class Store:
                 query = query.where(Download.status == status)
             return list(session.exec(query))
 
+    def has_url(self, url: str) -> bool:
+        with Session(self.engine) as session:
+            query = select(Download.id).where((Download.url == url) | (Download.final_url == url))
+            return session.exec(query.limit(1)).first() is not None
+
     def update(self, download_id: str, **fields: Any) -> Download | None:
         with Session(self.engine, expire_on_commit=False) as session:
             row = session.get(Download, download_id)

@@ -51,6 +51,8 @@ for (const run of RUNS) {
       await page.locator("#language").waitFor({ timeout: 15000 });
       await page.waitForTimeout(500);
       await page.screenshot({ path: `${out}/settings-${run.name}.png` });
+      await page.locator("#clip-ignore").scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${out}/settings-clipboard-${run.name}.png` });
     }
   } catch (error) {
     problems.push(String(error).split("\n")[0]);

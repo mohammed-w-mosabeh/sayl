@@ -45,9 +45,10 @@ Claude Code updates these checkboxes at the end of each phase. Acceptance criter
 - [x] Acceptance: the UI renders correctly in Arabic RTL (`desktop/scripts/ui_check.py`)
 
 ## Phase 4 — Clipboard watcher
-- [ ] Session detection
-- [ ] Wayland (wl-paste), GNOME fallback (XWayland poll), X11 (XFixes)
-- [ ] Filtering, debounce, ignore list, actionable notification
+- [x] Session detection
+- [x] Wayland (wl-paste), GNOME fallback (XWayland poll), X11 (XFixes)
+- [x] Filtering, debounce, ignore list, actionable notification
+- [x] Acceptance: a copied link is offered within 1 s on X11 and wlroots Wayland, and within 2 s on GNOME Wayland
 
 ## Phase 5 — Capture proxy  (tag `v0.2.0`)
 - [ ] Per-machine CA, install into system / NSS / Firefox profiles, uninstall

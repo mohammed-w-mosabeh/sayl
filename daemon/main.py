@@ -1,6 +1,7 @@
 """sayld entry point: wires the services and serves the API until SIGTERM or SIGINT."""
 
 import asyncio
+import os
 import signal
 import subprocess
 from collections.abc import Generator
@@ -10,7 +11,7 @@ from pathlib import Path
 
 import uvicorn
 
-from daemon.api import Services, create_app
+from daemon.api import AddDownload, Services, create_app, create_download
 from daemon.config import Config, Paths, ensure_token, load_config
 from daemon.db import make_engine, migrate
 from daemon.engines.aria2 import Aria2Engine
@@ -23,6 +24,7 @@ from daemon.models import EngineName
 from daemon.queue import QueueManager
 from daemon.store import Store
 from daemon.vault import Vault, load_key
+from daemon.watchers.service import ClipboardService
 
 
 class _Server(uvicorn.Server):
@@ -57,8 +59,12 @@ class Daemon:
     async def start(self) -> None:
         await self.aria2.start()
         await self.services.queue.start()
+        if self.services.clipboard is not None:
+            await self.services.clipboard.start()
 
     async def stop(self) -> None:
+        if self.services.clipboard is not None:
+            await self.services.clipboard.stop()
         await self.services.queue.stop()
         await self.aria2.stop()
         await self.hybrid.client.aclose()
@@ -84,6 +90,11 @@ async def build(paths: Paths, config: Config) -> Daemon:
     queue = QueueManager(store, vault, engines, bus, config)
     default_dir = await asyncio.to_thread(default_download_dir, config)
     services = Services(store, vault, queue, bus, config, engines, token, default_dir)
+
+    async def add(link: str) -> None:
+        await create_download(services, AddDownload(url=link))
+
+    services.clipboard = ClipboardService(store, bus, add, os.environ)
     return Daemon(services, aria2, hybrid)
 
 

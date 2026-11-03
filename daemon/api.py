@@ -26,6 +26,7 @@ from daemon.queue import QueueManager
 from daemon.router import route
 from daemon.store import Store, run
 from daemon.vault import Vault
+from daemon.watchers.service import ClipboardService
 
 VERSION = "0.1.0"
 APP_ORIGINS = frozenset({"tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"})
@@ -157,6 +158,8 @@ class InfoOut(BaseModel):
     version: str
     default_dir: str
     max_concurrent: int
+    # off, unavailable, or the watcher in use: wayland, xwayland_poll, x11, or poll.
+    clipboard: str
 
 
 @dataclass
@@ -169,6 +172,40 @@ class Services:
     engines: dict[EngineName, Engine]
     token: str
     default_dir: str
+    clipboard: ClipboardService | None = None
+
+
+async def create_download(services: Services, body: AddDownload) -> Download:
+    """Queue a download, as `POST /downloads` and the clipboard notification both do."""
+    headers = dict(body.headers)
+    if body.cookies:
+        headers["Cookie"] = body.cookies
+    if body.referer:
+        headers["Referer"] = body.referer
+    row = Download(
+        url=body.url,
+        page_url=body.page_url,
+        filename=sanitize(body.filename) if body.filename else "",
+        dest_dir=body.dest_dir or services.default_dir,
+        category_id=body.category,
+        format_id=body.format_id,
+        speed_limit=body.speed_limit,
+        media_json=body.model_dump_json(
+            include={
+                "audio_only",
+                "subtitles",
+                "playlist_items",
+                "cookies_file",
+                "cookies_from_browser",
+            }
+        ),
+        headers_enc=services.vault.seal(headers),
+        status=Status.PAUSED if body.start_paused else Status.QUEUED,
+    )
+    await run(services.store.add, row)
+    services.bus.publish("download.added", id=row.id)
+    services.queue.poke()
+    return row
 
 
 def public(row: Download) -> DownloadOut:
@@ -217,35 +254,7 @@ def create_app(services: Services) -> FastAPI:
 
     @app.post("/downloads", dependencies=auth, status_code=201)
     async def add_download(body: AddDownload) -> DownloadOut:
-        headers = dict(body.headers)
-        if body.cookies:
-            headers["Cookie"] = body.cookies
-        if body.referer:
-            headers["Referer"] = body.referer
-        row = Download(
-            url=body.url,
-            page_url=body.page_url,
-            filename=sanitize(body.filename) if body.filename else "",
-            dest_dir=body.dest_dir or services.default_dir,
-            category_id=body.category,
-            format_id=body.format_id,
-            speed_limit=body.speed_limit,
-            media_json=body.model_dump_json(
-                include={
-                    "audio_only",
-                    "subtitles",
-                    "playlist_items",
-                    "cookies_file",
-                    "cookies_from_browser",
-                }
-            ),
-            headers_enc=services.vault.seal(headers),
-            status=Status.PAUSED if body.start_paused else Status.QUEUED,
-        )
-        await run(store.add, row)
-        services.bus.publish("download.added", id=row.id)
-        queue.poke()
-        return public(row)
+        return public(await create_download(services, body))
 
     @app.post("/downloads/attach", dependencies=auth, status_code=201)
     async def attach_download(body: AttachDownload) -> DownloadOut:
@@ -359,6 +368,7 @@ def create_app(services: Services) -> FastAPI:
             version=VERSION,
             default_dir=services.default_dir,
             max_concurrent=services.config.max_concurrent,
+            clipboard=services.clipboard.state if services.clipboard else "off",
         )
 
     @app.get("/settings", dependencies=auth)
@@ -372,7 +382,10 @@ def create_app(services: Services) -> FastAPI:
             await queue.set_global_speed_limit(values["speed_limit"])
         if values.get("clear_host_policy"):
             await run(store.clear_host_policy)
-        return await run(store.settings)
+        settings = await run(store.settings)
+        if services.clipboard is not None:
+            await services.clipboard.apply(settings)
+        return settings
 
     def crud(path: str, model: type[Category] | type[Schedule]) -> None:
         async def create(row: model) -> model:  # type: ignore[valid-type]

@@ -122,8 +122,10 @@ def main() -> int:
         f'port = {DAEMON_PORT}\ndev_origins = ["http://localhost:{WEB_PORT}"]\n'
         f'download_dir = "{state / "out"}"\n'
     )
+    # No display or session bus: the daemon must not watch the real clipboard or notify.
+    hidden = {"DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE", "DBUS_SESSION_BUS_ADDRESS"}
     env = {
-        **os.environ,
+        **{key: value for key, value in os.environ.items() if key not in hidden},
         "XDG_CONFIG_HOME": str(state / "config"),
         "XDG_DATA_HOME": str(state / "data"),
         "XDG_CACHE_HOME": str(state / "cache"),

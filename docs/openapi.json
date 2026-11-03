@@ -410,6 +410,10 @@
    },
    "InfoOut": {
     "properties": {
+     "clipboard": {
+      "title": "Clipboard",
+      "type": "string"
+     },
      "default_dir": {
       "title": "Default Dir",
       "type": "string"
@@ -426,7 +430,8 @@
     "required": [
      "version",
      "default_dir",
-     "max_concurrent"
+     "max_concurrent",
+     "clipboard"
     ],
     "title": "InfoOut",
     "type": "object"

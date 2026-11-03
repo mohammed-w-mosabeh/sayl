@@ -493,6 +493,8 @@ export interface components {
         };
         /** InfoOut */
         InfoOut: {
+            /** Clipboard */
+            clipboard: string;
             /** Default Dir */
             default_dir: string;
             /** Max Concurrent */

@@ -10,7 +10,9 @@ dependencies = [
     "cryptography>=43",
     "fastapi>=0.115",
     "httpx>=0.27",
+    "jeepney>=0.9",
     "keyring>=25",
+    "python-xlib>=0.33",
     "rich>=13.9",
     "sqlmodel>=0.0.22",
     "typer>=0.15",
@@ -68,7 +70,7 @@ strict = true
 files = ["daemon", "cli"]
 
 [[tool.mypy.overrides]]
-module = ["yt_dlp", "yt_dlp.*"]
+module = ["yt_dlp", "yt_dlp.*", "Xlib", "Xlib.*", "jeepney", "jeepney.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

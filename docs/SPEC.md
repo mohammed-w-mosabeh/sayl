@@ -110,6 +110,12 @@ GNOME via `gsettings org.gnome.system.proxy`, KDE via `kwriteconfig5/6`, plus pr
 - GNOME on Wayland: poll the XWayland clipboard (`xclip -o -selection clipboard` every 700 ms) and document the limitation.
 - X11: XFixes selection events via python-xlib; polling only as fallback.
 - Accept only `http(s)`, `ftp`, `magnet`; debounce duplicates for 10 s; respect an ignore list; show an actionable notification.
+- If `wl-paste --watch` is refused (no data-control), fall back to polling XWayland.
+- Never read content a password manager marks secret (`x-kde-passwordManagerHint`), and read only text types.
+- What is on the clipboard when watching starts is never offered. Links already in Sayl are not offered.
+- The daemon sends the notification itself over D-Bus (`org.freedesktop.Notifications`), so it works with the UI closed. Buttons: Download (queues it with default options) and Ignore this site (adds the host to the ignore list). Clicking the body does nothing. It also emits `clipboard.detected`.
+- Settings: `clipboard_enabled` (default true) and `clipboard_ignore` (hosts, which include subdomains, or globs over the whole link). `GET /info` reports the watcher in use.
+- The daemon reads `DISPLAY`, `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE`, and `DBUS_SESSION_BUS_ADDRESS` from its environment. A systemd user unit must import them (Phase 7).
 
 ## Feature list (IDM parity and beyond)
 

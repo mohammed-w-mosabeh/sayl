@@ -3,6 +3,8 @@
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+- Phase 4 clipboard watcher: copied links are offered in a desktop notification with Download and Ignore this site buttons, even with the app closed. Works on X11 (XFixes), Wayland with data-control (`wl-paste --watch`), and GNOME on Wayland (XWayland poll).
+- Links only (http, https, ftp, magnet), debounced for 10 s, with an ignore list. Content a password manager marks secret is never read. Settings and the watcher in use are shown in the desktop app.
 - Phase 3 desktop app: Tauri 2 shell around a Next.js static export, with a live downloads list, add dialog with a yt-dlp quality, subtitle, and playlist picker, details view, expired-link refresh, settings, and categories.
 - Arabic (RTL) and English UI, light and dark themes, tray, notifications, and a floating drop target for links.
 - API: typed responses and a generated TypeScript client, `GET /info`, `download.updated` and `download.removed` events, and CORS for the app's own origin only (`dev_origins` for development).

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Probe } from "@/lib/api/client";
 import { buildRequest, type Choices } from "./add-dialog";
+import { ignoreList } from "./settings-view";
 
 const choices: Choices = {
   filename: "file.bin",
@@ -55,5 +56,15 @@ describe("buildRequest", () => {
     expect(body.audio_only).toBe(true);
     expect(body.format_id).toBeUndefined();
     expect(body.playlist_items).toBeUndefined();
+  });
+});
+
+describe("ignoreList", () => {
+  it("splits lines and commas, lowercases, and drops blanks and repeats", () => {
+    expect(ignoreList("Bank.example\n\n*.pdf, bank.example،shop.example ")).toEqual([
+      "bank.example",
+      "*.pdf",
+      "shop.example",
+    ]);
   });
 });

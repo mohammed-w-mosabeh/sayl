@@ -193,7 +193,12 @@ def test_download_out_lists_every_public_column() -> None:
 
 async def test_info(stack: Stack) -> None:
     info = (await stack.client.get("/info")).json()
-    assert info == {"version": VERSION, "default_dir": str(stack.downloads), "max_concurrent": 3}
+    assert info == {
+        "version": VERSION,
+        "default_dir": str(stack.downloads),
+        "max_concurrent": 3,
+        "clipboard": "unavailable",  # Tests run with no display; see conftest.py.
+    }
 
 
 async def test_stored_headers_are_encrypted_and_never_returned(stack: Stack) -> None:

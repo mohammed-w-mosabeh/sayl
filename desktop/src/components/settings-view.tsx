@@ -6,10 +6,10 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { useApi } from "@/components/providers";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Select } from "@/components/ui/input";
+import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { inTauri } from "@/lib/api/connection";
-import { languages, useI18n, type Language } from "@/lib/i18n";
+import { languages, useI18n, type Key, type Language } from "@/lib/i18n";
 import { dropTargetVisible, setDropTarget } from "@/lib/native";
 import { useUi, type Theme } from "@/lib/prefs";
 
@@ -191,6 +191,70 @@ function Categories() {
   );
 }
 
+export function ignoreList(text: string): string[] {
+  return [...new Set(text.split(/[\n,،]+/).map((line) => line.trim().toLowerCase()).filter(Boolean))];
+}
+
+function Clipboard() {
+  const { t } = useI18n();
+  const api = useApi();
+  const client = useQueryClient();
+  const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings });
+  const info = useQuery({ queryKey: ["info"], queryFn: api.info, refetchInterval: 5000 });
+  const [draft, setDraft] = useState<string | null>(null);
+  const stored = Array.isArray(settings.data?.clipboard_ignore)
+    ? (settings.data.clipboard_ignore as unknown[]).map(String)
+    : [];
+  const enabled = settings.data?.clipboard_enabled !== false;
+  const save = useMutation({
+    mutationFn: (values: Record<string, unknown>) => api.putSettings(values),
+    onSuccess: (data) => {
+      client.setQueryData(["settings"], data);
+      void client.invalidateQueries({ queryKey: ["info"] });
+      setDraft(null);
+    },
+  });
+  const state = info.data?.clipboard ?? "off";
+  const known = ["off", "unavailable", "wayland", "xwayland_poll", "x11", "poll"];
+
+  return (
+    <Section title={t("settings.clipboard")} body={t("settings.clipboard.body")}>
+      <Toggle
+        label={t("settings.clipboard.enabled")}
+        checked={enabled}
+        onChange={(checked) => save.mutate({ clipboard_enabled: checked })}
+      />
+      <p className="text-sm text-muted-foreground">
+        {t("settings.clipboard.state", {
+          state: known.includes(state) ? t(`settings.clipboard.state.${state}` as Key) : state,
+        })}
+      </p>
+      <form
+        className="grid gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          save.mutate({ clipboard_ignore: ignoreList(draft ?? "") });
+        }}
+      >
+        <Field label={t("settings.clipboard.ignore")} htmlFor="clip-ignore" hint={t("settings.clipboard.ignore.hint")}>
+          <Textarea
+            id="clip-ignore"
+            dir="ltr"
+            rows={4}
+            value={draft ?? stored.join("\n")}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+        </Field>
+        <div>
+          <Button type="submit" size="sm" disabled={draft === null || save.isPending}>
+            {t("action.save")}
+          </Button>
+        </div>
+      </form>
+    </Section>
+  );
+}
+
 function DropTargetToggle() {
   const { t } = useI18n();
   const [visible, setVisible] = useState(false);
@@ -267,6 +331,8 @@ export function SettingsView() {
             <DropTargetToggle />
             <HostPolicy />
           </Section>
+
+          <Clipboard />
 
           <Categories />
 
