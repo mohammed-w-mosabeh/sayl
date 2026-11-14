@@ -4,6 +4,46 @@
  */
 
 export interface paths {
+    "/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Batch
+         * @description Queue every link, in order, once each, with the same options.
+         */
+        post: operations["add_batch_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/browsers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Browsers
+         * @description Browsers with a profile here, for cookies_from_browser.
+         */
+        get: operations["list_browsers_browsers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/capture": {
         parameters: {
             query?: never;
@@ -264,6 +304,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/downloads/{download_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify
+         * @description Hash the finished file and compare. The result is stored as checksum_ok.
+         */
+        post: operations["verify_downloads__download_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grab-site": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Grab Site
+         * @description Start crawling one site for files. Poll GET /grab-site/{id}, then queue with /batch.
+         */
+        post: operations["grab_site_grab_site_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grab-site/{grab_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Grab Status */
+        get: operations["grab_status_grab_site__grab_id__get"];
+        put?: never;
+        post?: never;
+        /** Grab Cancel */
+        delete: operations["grab_cancel_grab_site__grab_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/info": {
         parameters: {
             query?: never;
@@ -298,6 +396,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Queue State */
+        get: operations["queue_state_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queue/post-action/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Post Action
+         * @description Cancel a shutdown, suspend, or command before it runs.
+         */
+        post: operations["cancel_post_action_queue_post_action_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queue/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue Start */
+        post: operations["queue_start_queue_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/queue/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue Stop */
+        post: operations["queue_stop_queue_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/schedules": {
         parameters: {
             query?: never;
@@ -305,11 +474,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read All */
-        get: operations["list/schedules"];
+        /** List Schedules */
+        get: operations["list_schedules_schedules_get"];
         put?: never;
-        /** Create */
-        post: operations["create/schedules"];
+        /** Create Schedule */
+        post: operations["create_schedule_schedules_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -324,11 +493,31 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Replace */
-        put: operations["replace/schedules"];
+        /** Replace Schedule */
+        put: operations["replace_schedule_schedules__key__put"];
         post?: never;
-        /** Remove */
-        delete: operations["delete/schedules"];
+        /** Delete Schedule */
+        delete: operations["delete_schedule_schedules__key__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/{key}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Schedule
+         * @description Do what the schedule does now, post action included.
+         */
+        post: operations["run_schedule_schedules__key__run_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -365,6 +554,11 @@ export interface components {
             audio_only?: boolean;
             /** Category */
             category?: string | null;
+            /**
+             * Checksum
+             * @default
+             */
+            checksum?: string;
             /**
              * Cookies
              * @default
@@ -478,6 +672,66 @@ export interface components {
             status?: number;
             /** Url */
             url: string;
+        };
+        /**
+         * BatchIn
+         * @description Links taken as they are, patterns such as file[001-100].jpg that expand, or both.
+         */
+        BatchIn: {
+            /** Category */
+            category?: string | null;
+            /**
+             * Cookies
+             * @default
+             */
+            cookies?: string;
+            /**
+             * Cookies From Browser
+             * @default
+             */
+            cookies_from_browser?: string;
+            /**
+             * Dest Dir
+             * @default
+             */
+            dest_dir?: string;
+            /**
+             * Headers
+             * @default {}
+             */
+            headers?: {
+                [key: string]: string;
+            };
+            /**
+             * Patterns
+             * @default []
+             */
+            patterns?: string[];
+            /**
+             * Referer
+             * @default
+             */
+            referer?: string;
+            /**
+             * Speed Limit
+             * @default 0
+             */
+            speed_limit?: number;
+            /**
+             * Start Paused
+             * @default false
+             */
+            start_paused?: boolean;
+            /**
+             * Urls
+             * @default []
+             */
+            urls?: string[];
+        };
+        /** BatchOut */
+        BatchOut: {
+            /** Ids */
+            ids: string[];
         };
         /** BypassReport */
         BypassReport: {
@@ -625,6 +879,77 @@ export interface components {
          * @enum {string}
          */
         EngineName: "aria2" | "ytdlp" | "hybrid";
+        /** GrabFile */
+        GrabFile: {
+            /** Page */
+            page: string;
+            /** Size */
+            size: number | null;
+            /** Url */
+            url: string;
+        };
+        /** GrabIn */
+        GrabIn: {
+            /**
+             * Cookies
+             * @default
+             */
+            cookies?: string;
+            /**
+             * Cookies From Browser
+             * @default
+             */
+            cookies_from_browser?: string;
+            /**
+             * Depth
+             * @default 2
+             */
+            depth?: number;
+            /**
+             * Extensions
+             * @default []
+             */
+            extensions?: string[];
+            /**
+             * Max Pages
+             * @default 200
+             */
+            max_pages?: number;
+            /**
+             * Max Size
+             * @default 0
+             */
+            max_size?: number;
+            /**
+             * Min Size
+             * @default 0
+             */
+            min_size?: number;
+            /**
+             * Referer
+             * @default
+             */
+            referer?: string;
+            /** Url */
+            url: string;
+        };
+        /** GrabOut */
+        GrabOut: {
+            /** Error */
+            error: string;
+            /** Files */
+            files: components["schemas"]["GrabFile"][];
+            /** Id */
+            id: string;
+            /** Pages */
+            pages: number;
+            /** Skipped Robots */
+            skipped_robots: number;
+            /** Status */
+            status: string;
+            /** Url */
+            url: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -669,6 +994,11 @@ export interface components {
             /** Speed Limit */
             speed_limit?: number | null;
         };
+        /**
+         * PostAction
+         * @enum {string}
+         */
+        PostAction: "none" | "shutdown" | "suspend" | "command";
         /** Probe */
         Probe: {
             /**
@@ -709,6 +1039,16 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** QueueOut */
+        QueueOut: {
+            post_action: components["schemas"]["PostAction"];
+            /** Post Action Armed */
+            post_action_armed: boolean;
+            /** Post Action Pending */
+            post_action_pending: boolean;
+            /** Running */
+            running: boolean;
+        };
         /** RefreshUrl */
         RefreshUrl: {
             /**
@@ -721,26 +1061,51 @@ export interface components {
             /** Url */
             url: string;
         };
-        /** Schedule */
-        Schedule: {
-            /** Action */
-            action: string;
+        /**
+         * ScheduleAction
+         * @enum {string}
+         */
+        ScheduleAction: "start_queue" | "stop_queue" | "speed_limit";
+        /** ScheduleIn */
+        ScheduleIn: {
+            action: components["schemas"]["ScheduleAction"];
             /** Cron */
             cron: string;
-            /** Id */
-            id?: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
             /** Name */
             name: string;
             /**
-             * Params Json
+             * Params
              * @default {}
              */
-            params_json?: string;
-            /**
-             * Post Action
-             * @default none
-             */
-            post_action?: string;
+            params?: {
+                [key: string]: unknown;
+            };
+            /** @default none */
+            post_action?: components["schemas"]["PostAction"];
+        };
+        /** ScheduleOut */
+        ScheduleOut: {
+            action: components["schemas"]["ScheduleAction"];
+            /** Cron */
+            cron: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Next Run */
+            next_run: string | null;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            post_action: components["schemas"]["PostAction"];
         };
         /**
          * Status
@@ -760,6 +1125,25 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** VerifyIn */
+        VerifyIn: {
+            /**
+             * Checksum
+             * @default
+             */
+            checksum?: string;
+        };
+        /** VerifyOut */
+        VerifyOut: {
+            /** Actual */
+            actual: string;
+            /** Algo */
+            algo: string;
+            /** Expected */
+            expected: string;
+            /** Ok */
+            ok: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -769,6 +1153,59 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    add_batch_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_browsers_browsers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+        };
+    };
     capture_status_capture_get: {
         parameters: {
             query?: never;
@@ -1400,6 +1837,134 @@ export interface operations {
             };
         };
     };
+    verify_downloads__download_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                download_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    grab_site_grab_site_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrabIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrabOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    grab_status_grab_site__grab_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grab_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrabOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    grab_cancel_grab_site__grab_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grab_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     info_info_get: {
         parameters: {
             query?: never;
@@ -1453,7 +2018,7 @@ export interface operations {
             };
         };
     };
-    "list/schedules": {
+    queue_state_queue_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1468,12 +2033,92 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Schedule"][];
+                    "application/json": components["schemas"]["QueueOut"];
                 };
             };
         };
     };
-    "create/schedules": {
+    cancel_post_action_queue_post_action_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueOut"];
+                };
+            };
+        };
+    };
+    queue_start_queue_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueOut"];
+                };
+            };
+        };
+    };
+    queue_stop_queue_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueOut"];
+                };
+            };
+        };
+    };
+    list_schedules_schedules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"][];
+                };
+            };
+        };
+    };
+    create_schedule_schedules_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1482,7 +2127,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Schedule"];
+                "application/json": components["schemas"]["ScheduleIn"];
             };
         };
         responses: {
@@ -1492,7 +2137,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Schedule"];
+                    "application/json": components["schemas"]["ScheduleOut"];
                 };
             };
             /** @description Validation Error */
@@ -1506,7 +2151,7 @@ export interface operations {
             };
         };
     };
-    "replace/schedules": {
+    replace_schedule_schedules__key__put: {
         parameters: {
             query?: never;
             header?: never;
@@ -1517,7 +2162,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Schedule"];
+                "application/json": components["schemas"]["ScheduleIn"];
             };
         };
         responses: {
@@ -1527,7 +2172,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Schedule"];
+                    "application/json": components["schemas"]["ScheduleOut"];
                 };
             };
             /** @description Validation Error */
@@ -1541,7 +2186,36 @@ export interface operations {
             };
         };
     };
-    "delete/schedules": {
+    delete_schedule_schedules__key__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_schedule_schedules__key__run_post: {
         parameters: {
             query?: never;
             header?: never;

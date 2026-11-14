@@ -107,6 +107,21 @@ def seed(token: str) -> None:
     )
     call(
         token,
+        "/schedules",
+        {
+            "name": "Night",
+            "cron": "0 2 * * 0-4",
+            "action": "start_queue",
+            "post_action": "shutdown",
+        },
+    )
+    call(
+        token,
+        "/schedules",
+        {"name": "Day", "cron": "0 8 * * *", "action": "speed_limit", "params": {"limit": 512_000}},
+    )
+    call(
+        token,
         "/capture/media",
         {"kind": "manifest", "page_url": f"{base}/watch", "url": f"{base}/stream.m3u8"},
     )

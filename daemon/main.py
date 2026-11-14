@@ -1,6 +1,7 @@
 """sayld entry point: wires the services and serves the API until SIGTERM or SIGINT."""
 
 import asyncio
+import logging
 import os
 import signal
 import subprocess
@@ -11,21 +12,29 @@ from pathlib import Path
 
 import uvicorn
 
+from daemon import categories
 from daemon.api import AddDownload, Services, create_app, create_download
 from daemon.capture.manager import CaptureManager
 from daemon.config import Config, Paths, ensure_token, load_config
 from daemon.db import make_engine, migrate
-from daemon.engines.aria2 import Aria2Engine
+from daemon.engines.aria2 import Aria2Engine, Seeding
 from daemon.engines.base import Engine
 from daemon.engines.hybrid import HybridEngine
 from daemon.engines.ytdlp import YtDlpEngine
 from daemon.events import EventBus
+from daemon.grabber import Grabber
 from daemon.logs import setup_logging
 from daemon.models import EngineName
+from daemon.outbound import OutboundProxy
+from daemon.proxy import ProxyError
 from daemon.queue import QueueManager
+from daemon.scheduler import Scheduler
 from daemon.store import Store
+from daemon.store import run as in_thread
 from daemon.vault import Vault, load_key
 from daemon.watchers.service import ClipboardService
+
+log = logging.getLogger(__name__)
 
 SHUTDOWN_GRACE_SECONDS = 5
 
@@ -61,7 +70,15 @@ class Daemon:
 
     async def start(self) -> None:
         await self.aria2.start()
+        if self.services.outbound is not None:
+            saved = (await in_thread(self.services.store.settings)).get("outbound_proxy", "")
+            try:
+                await self.services.outbound.apply(str(saved or ""))
+            except ProxyError as error:
+                log.warning("outbound proxy ignored: %s", error)
         await self.services.queue.start()
+        if self.services.scheduler is not None:
+            await self.services.scheduler.start()
         if self.services.clipboard is not None:
             await self.services.clipboard.start()
         if self.services.capture is not None:
@@ -72,9 +89,15 @@ class Daemon:
             await self.services.capture.stop()  # First: it restores the system proxy.
         if self.services.clipboard is not None:
             await self.services.clipboard.stop()
+        if self.services.scheduler is not None:
+            await self.services.scheduler.stop()
+        if self.services.grabber is not None:
+            await self.services.grabber.stop()
         await self.services.queue.stop()
         await self.aria2.stop()
         await self.hybrid.client.aclose()
+        if self.services.outbound is not None:
+            await self.services.outbound.stop()
 
 
 async def build(paths: Paths, config: Config, env: Mapping[str, str] | None = None) -> Daemon:
@@ -85,6 +108,7 @@ async def build(paths: Paths, config: Config, env: Mapping[str, str] | None = No
     await asyncio.to_thread(migrate, paths.database)
     key = await asyncio.to_thread(load_key, paths.data / "headers.key")
     store = Store(make_engine(paths.database))
+    await asyncio.to_thread(store.seed_categories, categories.defaults())
     vault = Vault(key)
     bus = EventBus()
     hybrid = HybridEngine(
@@ -93,7 +117,7 @@ async def build(paths: Paths, config: Config, env: Mapping[str, str] | None = No
         min_bytes=config.accelerate_min_bytes,
         spool_max=config.capture_spool_max_bytes,
     )
-    aria2 = Aria2Engine(paths.data)
+    aria2 = Aria2Engine(paths.data, seeding=Seeding(config.bt_seed_ratio, config.bt_seed_minutes))
     engines: dict[EngineName, Engine] = {
         EngineName.ARIA2: aria2,
         EngineName.YTDLP: YtDlpEngine(),
@@ -101,6 +125,7 @@ async def build(paths: Paths, config: Config, env: Mapping[str, str] | None = No
     }
     queue = QueueManager(store, vault, engines, bus, config)
     default_dir = await asyncio.to_thread(default_download_dir, config)
+    queue.default_dir = default_dir
     services = Services(store, vault, queue, bus, config, engines, token, default_dir)
 
     async def add(link: str) -> None:
@@ -108,6 +133,11 @@ async def build(paths: Paths, config: Config, env: Mapping[str, str] | None = No
 
     services.clipboard = ClipboardService(store, bus, add, environment)
     services.capture = CaptureManager(paths, config, store, bus, environment)
+    services.scheduler = Scheduler(store, queue, bus)
+    services.grabber = Grabber()
+    ytdlp = engines[EngineName.YTDLP]
+    assert isinstance(ytdlp, YtDlpEngine)  # noqa: S101 - built just above
+    services.outbound = OutboundProxy(aria2, ytdlp, hybrid, services.grabber)
     return Daemon(services, aria2, hybrid)
 
 

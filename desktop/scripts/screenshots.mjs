@@ -46,6 +46,21 @@ for (const run of RUNS) {
       await page.getByRole("dialog").getByText(ENGINE[run.language]).waitFor({ timeout: 15000 });
       await page.screenshot({ path: `${out}/add-${run.name}.png` });
       await page.keyboard.press("Escape");
+      for (const [label, name] of [
+        [run.language === "ar" ? "دفعة" : "Batch", "batch"],
+        [run.language === "ar" ? "جلب موقع" : "Grab site", "grab"],
+      ]) {
+        await page.getByRole("button", { name: label, exact: true }).click();
+        await page.getByRole("dialog").waitFor();
+        await page.screenshot({ path: `${out}/${name}-${run.name}.png` });
+        await page.keyboard.press("Escape");
+      }
+      const stop = run.language === "ar" ? "إيقاف قائمة الانتظار" : "Stop queue";
+      const start = run.language === "ar" ? "تشغيل قائمة الانتظار" : "Start queue";
+      await page.getByRole("button", { name: stop, exact: true }).click();
+      await page.getByRole("status").filter({ hasText: run.language === "ar" ? "متوقفة" : "stopped" }).waitFor();
+      await page.screenshot({ path: `${out}/queue-stopped-${run.name}.png` });
+      await page.getByRole("button", { name: start, exact: true }).first().click();
     }
     if (run.settings) {
       await page.goto(`${url}settings/`);
@@ -54,6 +69,10 @@ for (const run of RUNS) {
       await page.screenshot({ path: `${out}/settings-${run.name}.png` });
       await page.locator("#clip-ignore").scrollIntoViewIfNeeded();
       await page.screenshot({ path: `${out}/settings-clipboard-${run.name}.png` });
+      await page.locator("#sched-name").scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${out}/settings-schedules-${run.name}.png` });
+      await page.locator("#proxy-url").scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${out}/settings-proxy-${run.name}.png` });
     }
     const bar = await context.newPage();
     bar.on("pageerror", (error) => problems.push(`bar: ${error.message}`));

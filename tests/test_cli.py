@@ -266,3 +266,47 @@ def test_capture_install_ca_reports_each_store(sayld: Sayld) -> None:
     output = sayl("capture", "install-ca", "--no-system", code=0 if has_certutil else 1)
     assert "chrome" in output if has_certutil else "libnss3-tools" in output
     sayl("capture", "uninstall")
+
+
+def test_add_with_a_checksum_then_verify(sayld: Sayld) -> None:
+    download_id = add(sayld, "/cli-sum.bin", "--checksum", f"sha256:{SHA256}")
+    assert wait_for(download_id, "completed", "failed")["status"] == "completed"
+    assert f"ok sha256 {SHA256}" in sayl("verify", download_id[:8])
+    output = sayl("verify", download_id[:8], "0" * 64, code=1)
+    assert "mismatch" in output and f"actual   {SHA256}" in output
+
+
+def test_queue_stop_start_and_schedules(sayld: Sayld) -> None:
+    assert "stopped" in sayl("queue", "stop")
+    try:
+        download_id = add(sayld, "/cli-held.bin")
+        time.sleep(1.5)
+        assert as_json("info", download_id)["status"] == "queued"
+    finally:
+        assert "running" in sayl("queue", "start")
+    assert wait_for(download_id, "completed", "failed")["status"] == "completed"
+
+    added = sayl("schedule", "add", "night", "0 2 * * *", "speed_limit", "--limit", "5000")
+    short = added.split()[1].rstrip(",")
+    listing = sayl("schedule", "ls")
+    assert short in listing and "speed_limit 4.9 KB/s" in listing
+    assert f"ran {short}" in sayl("schedule", "run", short)
+    assert "speed_limit = 5000" in sayl("config", "speed_limit")
+    sayl("config", "speed_limit", "0")
+    assert f"removed {short}" in sayl("schedule", "rm", short)
+    assert "0 schedules start with" in sayl("schedule", "run", short, code=1)
+    bad = sayl("schedule", "add", "x", "0 2 * * *", "stop_queue", "--after", "shutdown", code=1)
+    assert "only a start_queue" in bad
+
+
+def test_batch_reads_links_and_patterns(sayld: Sayld, tmp_path: Path) -> None:
+    listing = tmp_path / "links.txt"
+    listing.write_text(f"# a comment\n{sayld.origin.url('/cli-list.bin')}\n\n")
+    output = sayl("batch", sayld.origin.url("/cli-p[1-2].bin"), "--file", str(listing), "--paused")
+    assert "added 3 downloads" in output
+
+
+def test_grab_lists_then_queues_a_sites_files(sayld: Sayld) -> None:
+    output = sayl("grab", sayld.origin.url("/site/"), "--queue", "--dest", str(sayld.out / "grab"))
+    assert "2 files on 1 pages (done)" in output
+    assert "added 2 downloads" in output

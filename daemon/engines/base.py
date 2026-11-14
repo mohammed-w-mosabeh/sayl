@@ -69,6 +69,7 @@ class Progress:
     filename: str = ""
     error: str = ""
     warnings: dict[str, Any] = field(default_factory=dict)
+    engine_ref: str = ""  # Set when the engine now tracks it under a new id (a magnet's files).
 
 
 class Engine(ABC):

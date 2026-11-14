@@ -1,13 +1,16 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Search, Settings } from "lucide-react";
+import { Globe, ListPlus, Plus, Search, Settings } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AddDialog } from "@/components/add-dialog";
+import { BatchDialog } from "@/components/batch-dialog";
 import { Details } from "@/components/details";
 import { DownloadList } from "@/components/download-list";
+import { GrabDialog } from "@/components/grab-dialog";
 import { useApi } from "@/components/providers";
+import { QueueBanner, QueueToggle } from "@/components/queue-controls";
 import { Sidebar } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,6 +67,7 @@ export function MainWindow() {
     [all, category, filter, text],
   );
   const current = all.find((row) => row.id === selected);
+  const [dialog, setDialog] = useState<"batch" | "grab" | null>(null);
 
   return (
     <div className="flex h-screen flex-col">
@@ -78,6 +82,13 @@ export function MainWindow() {
           <Plus />
           {t("action.add")}
         </Button>
+        <Button size="icon" variant="ghost" aria-label={t("action.batch")} title={t("action.batch")} onClick={() => setDialog("batch")}>
+          <ListPlus />
+        </Button>
+        <Button size="icon" variant="ghost" aria-label={t("action.grab")} title={t("action.grab")} onClick={() => setDialog("grab")}>
+          <Globe />
+        </Button>
+        <QueueToggle />
         <div className="relative ms-auto w-64">
           <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -106,11 +117,14 @@ export function MainWindow() {
       <div className="flex min-h-0 flex-1">
         <Sidebar rows={all} />
         <main className="flex min-w-0 flex-1 flex-col">
+          <QueueBanner />
           <DownloadList rows={visible} empty={all.length === 0 ? "none" : "filtered"} />
         </main>
         {current ? <Details key={current.id} row={current} /> : null}
       </div>
       <AddDialog />
+      <BatchDialog open={dialog === "batch"} onClose={() => setDialog(null)} />
+      <GrabDialog open={dialog === "grab"} onClose={() => setDialog(null)} />
     </div>
   );
 }

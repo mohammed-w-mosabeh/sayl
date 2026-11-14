@@ -1,6 +1,7 @@
 """Aria2Engine: a managed aria2c child process driven by JSON-RPC over WebSocket."""
 
 import asyncio
+import base64
 import contextlib
 import json
 import logging
@@ -11,8 +12,10 @@ import socket
 import subprocess
 import tempfile
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 import httpx
 import websockets
@@ -45,6 +48,17 @@ def file_allocation(directory: Path) -> str:
     return "falloc"
 
 
+def local_torrent(url: str) -> Path | None:
+    """A .torrent on this machine, as a file:// URL or an absolute path, if url is one."""
+    if url.startswith("file://"):
+        path = Path(unquote(urlsplit(url).path))
+    elif url.startswith("/"):
+        path = Path(url)
+    else:
+        return None
+    return path if path.suffix.lower() == ".torrent" else None
+
+
 def _free_port() -> int:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
@@ -52,7 +66,25 @@ def _free_port() -> int:
     return port
 
 
-def command_line(binary: str, port: int, secret: str, data: Path, allocation: str) -> list[str]:
+@dataclass(frozen=True)
+class Seeding:
+    """How long a finished torrent keeps seeding: until either limit is reached."""
+
+    ratio: float = 1.0
+    minutes: int = 60
+
+
+DEFAULT_SEEDING = Seeding()
+
+
+def command_line(
+    binary: str,
+    port: int,
+    secret: str,
+    data: Path,
+    allocation: str,
+    seeding: Seeding = DEFAULT_SEEDING,
+) -> list[str]:
     session = data / "aria2.session"
     arguments = [
         binary,
@@ -69,6 +101,12 @@ def command_line(binary: str, port: int, secret: str, data: Path, allocation: st
         f"--file-allocation={allocation}",
         f"--stop-with-process={os.getpid()}",  # Never outlive a killed daemon.
         "--quiet=true",
+        f"--seed-ratio={seeding.ratio}",
+        f"--seed-time={seeding.minutes}",
+        "--bt-detach-seed-only=true",  # A seeding torrent does not hold a download slot.
+        "--bt-save-metadata=true",  # A magnet's metadata survives a restart.
+        f"--dht-file-path={data / 'dht.dat'}",
+        f"--dht-file-path6={data / 'dht6.dat'}",
     ]
     if session.exists():
         arguments.append(f"--input-file={session}")
@@ -106,8 +144,10 @@ class Aria2Engine(Engine):
         binary: str | None = None,
         client: httpx.AsyncClient | None = None,
         on_restart: Callable[[], Awaitable[None]] | None = None,
+        seeding: Seeding = DEFAULT_SEEDING,
     ) -> None:
         self.data = data
+        self.seeding = seeding
         self.binary = binary or shutil.which("aria2c")
         self.client = client or httpx.AsyncClient(timeout=30)
         self.on_restart = on_restart
@@ -120,6 +160,7 @@ class Aria2Engine(Engine):
         self.stopping = False
         self.global_limit = 0
         self.own_limits: dict[str, int] = {}
+        self.proxy = ""  # An HTTP proxy URL, or "" for direct; kept across aria2 restarts.
 
     def _effective(self, own: int) -> int:
         """aria2's overall limit is a moving average, so it lets a burst through after a slow
@@ -136,7 +177,9 @@ class Aria2Engine(Engine):
         port = _free_port()
         self.secret = secrets.token_hex(16)
         allocation = await asyncio.to_thread(file_allocation, self.data)
-        arguments = command_line(self.binary, port, self.secret, self.data, allocation)
+        arguments = command_line(
+            self.binary, port, self.secret, self.data, allocation, self.seeding
+        )
         self.process = subprocess.Popen(arguments)  # noqa: S603, ASYNC220 - argument list
         for _ in range(CONNECT_ATTEMPTS):
             try:
@@ -147,6 +190,8 @@ class Aria2Engine(Engine):
         else:
             raise EngineError("aria2c did not start")
         self.reader = asyncio.create_task(self._read(self.socket))
+        if self.proxy:
+            await self.set_proxy(self.proxy)
 
     async def _read(self, connection: ClientConnection) -> None:
         with contextlib.suppress(websockets.ConnectionClosed):
@@ -218,11 +263,18 @@ class Aria2Engine(Engine):
             "dir": job.dest_dir,
             "header": [f"{name}: {value}" for name, value in job.headers.items()],
         }
-        if job.filename:
-            options["out"] = sanitize(job.filename)
         limit = self._effective(job.speed_limit)
         if limit:
             options["max-download-limit"] = str(limit)
+        torrent = local_torrent(job.url)
+        if torrent is not None:
+            metainfo = await asyncio.to_thread(torrent.read_bytes)
+            encoded = base64.b64encode(metainfo).decode()
+            gid = str(await self.rpc("aria2.addTorrent", encoded, [], options))
+            self.own_limits[gid] = job.speed_limit
+            return gid
+        if job.filename:
+            options["out"] = sanitize(job.filename)
         gid = str(await self.rpc("aria2.addUri", [job.url], options))
         self.own_limits[gid] = job.speed_limit
         return gid
@@ -241,6 +293,12 @@ class Aria2Engine(Engine):
         effective = str(self._effective(limit))
         await self.rpc("aria2.changeOption", engine_id, {"max-download-limit": effective})
 
+    async def set_proxy(self, url: str) -> None:
+        """Route HTTP and FTP through this HTTP proxy, with CONNECT even for plain HTTP."""
+        self.proxy = url
+        options = {"all-proxy": url, "proxy-method": "tunnel" if url else "get"}
+        await self.rpc("aria2.changeGlobalOption", options)
+
     async def set_global_speed_limit(self, limit: int) -> None:
         self.global_limit = limit
         await self.rpc("aria2.changeGlobalOption", {"max-overall-download-limit": str(limit)})
@@ -255,13 +313,35 @@ class Aria2Engine(Engine):
 
     async def status(self, engine_id: str) -> Progress:
         details = await self.rpc("aria2.tellStatus", engine_id)
+        followed = details.get("followedBy") or []
+        if followed:
+            # A magnet's metadata, or a .torrent fetched over HTTP: the files follow under a
+            # new id, which takes over the per-download limit.
+            if engine_id in self.own_limits and followed[0] not in self.own_limits:
+                with contextlib.suppress(EngineError):
+                    await self.set_speed_limit(followed[0], self.own_limits[engine_id])
+            progress = await self.status(followed[0])
+            return replace(progress, engine_ref=progress.engine_ref or followed[0])
         files = details.get("files") or [{}]
+        total, done = int(details["totalLength"]), int(details["completedLength"])
+        state = _STATES[details["status"]]
+        torrent = details.get("bittorrent")
+        name = Path(files[0].get("path", "")).name
+        if torrent is not None and not torrent.get("info"):
+            # A magnet still fetching its metadata: the files have not started.
+            if state in (Status.ACTIVE, Status.COMPLETED):
+                state, total, done = Status.ACTIVE, 0, 0
+            name = ""
+        elif torrent is not None:
+            name = torrent["info"].get("name") or name
+            if state is Status.ACTIVE and total and done >= total:
+                state = Status.COMPLETED  # Seeding in the background: the files are complete.
         return Progress(
-            _STATES[details["status"]],
-            int(details["totalLength"]),
-            int(details["completedLength"]),
+            state,
+            total,
+            done,
             int(details["downloadSpeed"]),
             int(details.get("connections", 0)),
-            Path(files[0].get("path", "")).name,
+            name,
             details.get("errorMessage", ""),
         )

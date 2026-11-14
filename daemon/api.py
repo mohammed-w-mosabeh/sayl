@@ -7,24 +7,40 @@ import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from starlette.requests import ClientDisconnect
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from daemon import batch, categories, checksum, cookies
 from daemon.capture.manager import CaptureManager
 from daemon.config import Config
 from daemon.engines.base import Engine, EngineError, ProbeResult, StreamInfo
 from daemon.engines.hybrid import may_resume
 from daemon.events import EventBus
 from daemon.filenames import filename_from_response, sanitize
-from daemon.models import Category, Download, EngineName, Schedule, Status
+from daemon.grabber import Grab, Grabber, GrabOptions
+from daemon.models import (
+    Category,
+    Download,
+    EngineName,
+    PostAction,
+    Schedule,
+    ScheduleAction,
+    Status,
+)
+from daemon.outbound import OutboundProxy
+from daemon.proxy import ProxyError
+from daemon.proxy import parse as parse_proxy
 from daemon.queue import QueueManager
 from daemon.router import route
+from daemon.scheduler import Scheduler, validate
 from daemon.store import Store, run
 from daemon.vault import Vault
 from daemon.watchers.service import ClipboardService
@@ -76,6 +92,75 @@ class AddDownload(BaseModel):
     playlist_items: str = ""
     cookies_file: str = ""
     cookies_from_browser: str = ""
+    checksum: str = ""  # algo:hex, or bare hex; checked when the download completes.
+
+    @field_validator("checksum")
+    @classmethod
+    def _checksum(cls, value: str) -> str:
+        if value:
+            checksum.parse(value)  # A ValueError becomes a 422.
+        return value
+
+
+class BatchIn(BaseModel):
+    """Links taken as they are, patterns such as file[001-100].jpg that expand, or both."""
+
+    urls: list[str] = []
+    patterns: list[str] = []
+    dest_dir: str = ""
+    category: str | None = None
+    referer: str = ""
+    cookies: str = ""
+    headers: dict[str, str] = {}
+    start_paused: bool = False
+    speed_limit: int = 0
+    cookies_from_browser: str = ""
+
+
+class BatchOut(BaseModel):
+    ids: list[str]
+
+
+BATCH_SCHEMES = ("http://", "https://", "ftp://", "magnet:")
+
+
+class GrabIn(BaseModel):
+    url: str
+    depth: int = 2  # Links away from the start page; at most 5.
+    extensions: list[str] = []  # Empty: every common download type.
+    min_size: int = 0
+    max_size: int = 0  # 0: no limit.
+    max_pages: int = 200  # At most 2000.
+    cookies: str = ""
+    referer: str = ""
+    cookies_from_browser: str = ""
+
+
+class GrabFile(BaseModel):
+    url: str
+    size: int | None
+    page: str
+
+
+class GrabOut(BaseModel):
+    id: str
+    url: str
+    status: str  # running, done, failed, canceled
+    error: str
+    pages: int
+    skipped_robots: int
+    files: list[GrabFile]
+
+
+class VerifyIn(BaseModel):
+    checksum: str = ""  # Replaces the stored one; empty uses the stored one.
+
+
+class VerifyOut(BaseModel):
+    ok: bool
+    algo: str
+    expected: str
+    actual: str
 
 
 class AttachDownload(BaseModel):
@@ -177,6 +262,44 @@ class BypassReport(BaseModel):
     reason: str = "tls"
 
 
+class ScheduleIn(BaseModel):
+    name: str
+    cron: str  # Five crontab fields, or six with seconds first.
+    action: ScheduleAction
+    params: dict[str, Any] = {}  # speed_limit: {"limit": B/s}; command: {"command": [argv]}.
+    post_action: PostAction = PostAction.NONE
+    enabled: bool = True
+
+    def row(self, key: str | None = None) -> Schedule:
+        values: dict[str, Any] = {
+            "name": self.name,
+            "cron": self.cron,
+            "action": self.action.value,
+            "params_json": json.dumps(self.params),
+            "post_action": self.post_action.value,
+            "enabled": self.enabled,
+        }
+        return Schedule(**values) if key is None else Schedule(id=key, **values)
+
+
+class ScheduleOut(BaseModel):
+    id: str
+    name: str
+    cron: str
+    action: ScheduleAction
+    params: dict[str, Any]
+    post_action: PostAction
+    enabled: bool
+    next_run: str | None  # ISO 8601 in local time, or None when disabled.
+
+
+class QueueOut(BaseModel):
+    running: bool
+    post_action: PostAction  # The one armed or counting down, else none.
+    post_action_armed: bool  # A start_queue schedule's post action waits for the queue.
+    post_action_pending: bool  # It is counting down and can still be cancelled.
+
+
 class CaptureOut(BaseModel):
     # off, starting, running, or failed.
     state: str
@@ -206,21 +329,40 @@ class Services:
     default_dir: str
     clipboard: ClipboardService | None = None
     capture: CaptureManager | None = None
+    scheduler: Scheduler | None = None
+    grabber: Grabber | None = None
+    outbound: OutboundProxy | None = None
+
+
+def checksum_fields(value: str) -> dict[str, str]:
+    if not value:
+        return {}
+    algo, digest = checksum.parse(value)
+    return {"checksum_algo": algo, "checksum_expected": digest}
 
 
 async def create_download(services: Services, body: AddDownload) -> Download:
     """Queue a download, as `POST /downloads` and the clipboard notification both do."""
     headers = dict(body.headers)
+    known = await run(services.store.all, Category)
+    name = sanitize(body.filename) if body.filename else filename_from_response(body.url, {})
+    category = categories.by_id(known, body.category) or (
+        None if body.category else categories.match(known, name)
+    )
     if body.cookies:
         headers["Cookie"] = body.cookies
     if body.referer:
         headers["Referer"] = body.referer
+    if body.cookies_from_browser and not body.url.startswith("magnet:"):
+        imported = await cookies.cookie_header(body.cookies_from_browser, body.url)
+        if imported:
+            headers["Cookie"] = cookies.merge(headers.get("Cookie", ""), imported)
     row = Download(
         url=body.url,
         page_url=body.page_url,
         filename=sanitize(body.filename) if body.filename else "",
-        dest_dir=body.dest_dir or services.default_dir,
-        category_id=body.category,
+        dest_dir=categories.folder(category, body.dest_dir, services.default_dir),
+        category_id=category.id if category else body.category,
         format_id=body.format_id,
         speed_limit=body.speed_limit,
         media_json=body.model_dump_json(
@@ -235,6 +377,8 @@ async def create_download(services: Services, body: AddDownload) -> Download:
         headers_enc=services.vault.seal(headers),
         status=Status.PAUSED if body.start_paused else Status.QUEUED,
     )
+    if body.checksum:
+        row.checksum_algo, row.checksum_expected = checksum.parse(body.checksum)
     await run(services.store.add, row)
     services.bus.publish("download.added", id=row.id)
     services.queue.poke()
@@ -287,7 +431,15 @@ def create_app(services: Services) -> FastAPI:
 
     @app.post("/downloads", dependencies=auth, status_code=201)
     async def add_download(body: AddDownload) -> DownloadOut:
-        return public(await create_download(services, body))
+        try:
+            return public(await create_download(services, body))
+        except cookies.CookieError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+
+    @app.get("/browsers", dependencies=auth)
+    async def list_browsers() -> list[str]:
+        """Browsers with a profile here, for cookies_from_browser."""
+        return await asyncio.to_thread(cookies.browsers, Path.home())
 
     @app.post("/downloads/attach", dependencies=auth, status_code=201)
     async def attach_download(body: AttachDownload) -> DownloadOut:
@@ -302,12 +454,18 @@ def create_app(services: Services) -> FastAPI:
             last_modified=lower.get("last-modified", ""),
             content_encoding=lower.get("content-encoding", ""),
         )
+        filename = sanitize(body.filename) if body.filename else ""
+        filename = filename or filename_from_response(body.url, lower)
+        category = categories.match(
+            await run(store.all, Category), filename, lower.get("content-type", "")
+        )
         row = Download(
             url=body.url,
             final_url=body.url,
             page_url=body.page_url,
-            filename=sanitize(body.filename) if body.filename else "",
-            dest_dir=body.dest_dir or services.default_dir,
+            filename=filename,
+            dest_dir=categories.folder(category, body.dest_dir, services.default_dir),
+            category_id=category.id if category else None,
             engine=EngineName.HYBRID,
             status=Status.PROBING,
             total_bytes=info.total or 0,
@@ -316,7 +474,6 @@ def create_app(services: Services) -> FastAPI:
             resumable=may_resume(info),
             headers_enc=services.vault.seal(body.request_headers),
         )
-        row.filename = row.filename or filename_from_response(body.url, lower)
         row.engine_ref = row.id
         await run(store.add, row)
         services.bus.publish("capture.detected", kind="download", id=row.id, filename=row.filename)
@@ -381,6 +538,131 @@ def create_app(services: Services) -> FastAPI:
     async def resume(row: Found) -> DownloadOut:
         return await act(row, queue.resume)
 
+    @app.post("/batch", dependencies=auth, status_code=201)
+    async def add_batch(body: BatchIn) -> BatchOut:
+        """Queue every link, in order, once each, with the same options."""
+        links = [url.strip() for url in body.urls]
+        try:
+            for pattern in body.patterns:
+                links += batch.expand(pattern.strip()) if pattern.strip() else []
+                if len(links) > batch.MAX_ITEMS:
+                    raise ValueError(f"more than {batch.MAX_ITEMS} links")
+        except ValueError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+        unique = list(dict.fromkeys(link for link in links if link))
+        if not unique:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "no links")
+        if len(unique) > batch.MAX_ITEMS:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, f"more than {batch.MAX_ITEMS} links"
+            )
+        refused = [link for link in unique if not link.lower().startswith(BATCH_SCHEMES)]
+        if refused:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, f"not a download link: {refused[0][:200]}"
+            )
+        shared = body.model_dump(exclude={"urls", "patterns"})
+        try:
+            ids = [
+                (await create_download(services, AddDownload(url=link, **shared))).id
+                for link in unique
+            ]
+        except cookies.CookieError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+        return BatchOut(ids=ids)
+
+    def grabber() -> Grabber:
+        if services.grabber is None:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "no site grabber")
+        return services.grabber
+
+    def grab_out(grab: Grab) -> GrabOut:
+        return GrabOut(
+            id=grab.id,
+            url=grab.options.url,
+            status=grab.status,
+            error=grab.error,
+            pages=grab.pages,
+            skipped_robots=grab.skipped_robots,
+            files=[GrabFile(url=f.url, size=f.size, page=f.page) for f in grab.files],
+        )
+
+    @app.post("/grab-site", dependencies=auth, status_code=202)
+    async def grab_site(body: GrabIn) -> GrabOut:
+        """Start crawling one site for files. Poll GET /grab-site/{id}, then queue with /batch."""
+        if urlsplit(body.url).scheme not in ("http", "https"):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "an http(s) link is needed")
+        headers: dict[str, str] = {"Referer": body.referer} if body.referer else {}
+        try:
+            imported = (
+                await cookies.cookie_header(body.cookies_from_browser, body.url)
+                if body.cookies_from_browser
+                else ""
+            )
+        except cookies.CookieError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+        if body.cookies or imported:
+            headers["Cookie"] = cookies.merge(body.cookies, imported)
+        options = GrabOptions(
+            url=body.url,
+            depth=body.depth,
+            extensions=tuple(e.strip().lower().lstrip(".") for e in body.extensions if e.strip()),
+            min_size=max(0, body.min_size),
+            max_size=max(0, body.max_size),
+            max_pages=body.max_pages,
+            headers=headers,
+        )
+        grab = grabber().start(options)
+        if grab.task is not None:
+            grab.task.add_done_callback(
+                lambda _: services.bus.publish("grab.updated", id=grab.id, status=grab.status)
+            )
+        return grab_out(grab)
+
+    @app.get("/grab-site/{grab_id}", dependencies=auth)
+    async def grab_status(grab_id: str) -> GrabOut:
+        grab = grabber().grabs.get(grab_id)
+        if grab is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such grab")
+        return grab_out(grab)
+
+    @app.delete("/grab-site/{grab_id}", dependencies=auth, status_code=204)
+    async def grab_cancel(grab_id: str) -> None:
+        if not await grabber().cancel(grab_id):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such grab")
+
+    @app.post("/downloads/{download_id}/verify", dependencies=auth)
+    async def verify(row: Found, body: VerifyIn) -> VerifyOut:
+        """Hash the finished file and compare. The result is stored as checksum_ok."""
+        if row.status is not Status.COMPLETED:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "only a completed download can be verified"
+            )
+        try:
+            fields = checksum_fields(body.checksum) or {
+                "checksum_algo": row.checksum_algo,
+                "checksum_expected": row.checksum_expected,
+            }
+        except ValueError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+        if not fields["checksum_expected"]:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, "no checksum to compare with"
+            )
+        await run(store.update, row.id, **fields)
+        try:
+            result = await queue.verify(row.id)
+        except OSError as error:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, f"cannot read the file: {error}"
+            ) from error
+        return VerifyOut(
+            ok=result.ok,
+            algo=fields["checksum_algo"],
+            expected=fields["checksum_expected"],
+            actual=result.actual,
+        )
+
     @app.post("/downloads/{download_id}/refresh-url", dependencies=auth)
     async def refresh_url(row: Found, body: RefreshUrl) -> DownloadOut:
         await queue.refresh_url(row, body.url, body.headers)
@@ -410,7 +692,14 @@ def create_app(services: Services) -> FastAPI:
 
     @app.put("/settings", dependencies=auth)
     async def put_settings(values: dict[str, Any]) -> dict[str, Any]:
+        if "outbound_proxy" in values:
+            try:
+                parse_proxy(str(values["outbound_proxy"] or ""))
+            except ProxyError as error:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
         await run(store.put_settings, values)
+        if "outbound_proxy" in values and services.outbound is not None:
+            await services.outbound.apply(str(values["outbound_proxy"] or ""))
         if isinstance(values.get("speed_limit"), int):
             await queue.set_global_speed_limit(values["speed_limit"])
         if values.get("clear_host_policy"):
@@ -458,7 +747,7 @@ def create_app(services: Services) -> FastAPI:
     async def capture_bypass(body: BypassReport) -> None:
         await capture().add_bypass(body.host)
 
-    def crud(path: str, model: type[Category] | type[Schedule]) -> None:
+    def crud(path: str, model: type[Category]) -> None:
         async def create(row: model) -> model:  # type: ignore[valid-type]
             await run(store.put, row)
             return row
@@ -483,7 +772,91 @@ def create_app(services: Services) -> FastAPI:
         )(remove)
 
     crud("/categories", Category)
-    crud("/schedules", Schedule)
+
+    def scheduler() -> Scheduler:
+        if services.scheduler is None:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "no scheduler")
+        return services.scheduler
+
+    def schedule_out(row: Schedule) -> ScheduleOut:
+        return ScheduleOut(
+            id=row.id,
+            name=row.name,
+            cron=row.cron,
+            action=ScheduleAction(row.action),
+            params=json.loads(row.params_json),
+            post_action=PostAction(row.post_action),
+            enabled=row.enabled,
+            next_run=scheduler().next_run(row.id),
+        )
+
+    async def save_schedule(row: Schedule) -> ScheduleOut:
+        try:
+            validate(row)
+        except ValueError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+        await run(store.put, row)
+        await scheduler().reload()
+        services.bus.publish("schedules.updated", id=row.id)
+        return schedule_out(row)
+
+    @app.get("/schedules", dependencies=auth)
+    async def list_schedules() -> list[ScheduleOut]:
+        return [schedule_out(row) for row in await run(store.all, Schedule)]
+
+    @app.post("/schedules", dependencies=auth, status_code=201)
+    async def create_schedule(body: ScheduleIn) -> ScheduleOut:
+        return await save_schedule(body.row())
+
+    @app.put("/schedules/{key}", dependencies=auth)
+    async def replace_schedule(key: str, body: ScheduleIn) -> ScheduleOut:
+        if await run(store.get, Schedule, key) is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
+        return await save_schedule(body.row(key))
+
+    @app.delete("/schedules/{key}", dependencies=auth, status_code=204)
+    async def delete_schedule(key: str) -> None:
+        if not await run(store.remove, Schedule, key):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
+        await scheduler().reload()
+        services.bus.publish("schedules.updated", id=key)
+
+    @app.post("/schedules/{key}/run", dependencies=auth, status_code=204)
+    async def run_schedule(key: str) -> None:
+        """Do what the schedule does now, post action included."""
+        if await run(store.get, Schedule, key) is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
+        await scheduler().fire(key)
+
+    def queue_out() -> QueueOut:
+        pending = scheduler().pending is not None
+        armed = queue.post_action is not None
+        return QueueOut(
+            running=queue.running,
+            post_action=scheduler().armed if armed or pending else PostAction.NONE,
+            post_action_armed=queue.post_action is not None,
+            post_action_pending=pending,
+        )
+
+    @app.get("/queue", dependencies=auth)
+    async def queue_state() -> QueueOut:
+        return queue_out()
+
+    @app.post("/queue/start", dependencies=auth)
+    async def queue_start() -> QueueOut:
+        await queue.start_queue()
+        return queue_out()
+
+    @app.post("/queue/stop", dependencies=auth)
+    async def queue_stop() -> QueueOut:
+        await queue.stop_queue()
+        return queue_out()
+
+    @app.post("/queue/post-action/cancel", dependencies=auth)
+    async def cancel_post_action() -> QueueOut:
+        """Cancel a shutdown, suspend, or command before it runs."""
+        await scheduler().cancel_post_action()
+        return queue_out()
 
     @app.websocket("/ws")
     async def events(socket: WebSocket) -> None:

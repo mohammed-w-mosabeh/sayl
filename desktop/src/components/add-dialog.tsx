@@ -26,6 +26,8 @@ export interface Choices {
   destDir: string;
   limit: string;
   paused: boolean;
+  checksum: string;
+  browser: string;
 }
 
 /** The request the daemon gets. Exported for tests: this is where the picker meets the API. */
@@ -40,6 +42,8 @@ export function buildRequest(url: string, probe: Probe | undefined, choices: Cho
     start_paused: choices.paused,
     speed_limit: Math.max(0, Math.round(Number(choices.limit) || 0)) * 1024,
   };
+  if (choices.checksum.trim()) body.checksum = choices.checksum.trim();
+  if (choices.browser) body.cookies_from_browser = choices.browser;
   if (probe?.engine === "ytdlp") {
     body.audio_only = choices.audioOnly;
     if (!choices.audioOnly) body.format_id = options[choices.quality]?.format ?? "";
@@ -85,7 +89,7 @@ function Form({ initialUrl, onDone }: { initialUrl: string; onDone: () => void }
   const [probed, setProbed] = useState(probe.data);
   if (probe.data !== probed) {
     setProbed(probe.data);
-    setOverrides(({ destDir, limit, paused }) => ({ destDir, limit, paused }));
+    setOverrides(({ destDir, limit, paused, checksum, browser }) => ({ destDir, limit, paused, checksum, browser }));
   }
   const choices: Choices = {
     filename: probe.data?.filename ?? "",
@@ -96,6 +100,8 @@ function Form({ initialUrl, onDone }: { initialUrl: string; onDone: () => void }
     destDir: info.data?.default_dir ?? "",
     limit: "0",
     paused: false,
+    checksum: "",
+    browser: "",
     ...Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== undefined)),
   };
   const change = (values: Partial<Choices>) => setOverrides((current) => ({ ...current, ...values }));
@@ -106,8 +112,14 @@ function Form({ initialUrl, onDone }: { initialUrl: string; onDone: () => void }
   const video = probe.data?.engine === "ytdlp";
   const locked = isProtected(formats);
 
+  const browsers = useQuery({ queryKey: ["browsers"], queryFn: api.browsers, staleTime: 300_000 });
   const add = useMutation({
-    mutationFn: () => api.add(buildRequest(url, probe.data, choices)),
+    mutationFn: () => {
+      const body = buildRequest(url, probe.data, choices);
+      // The folder shown is the default; send one only when chosen, so a category's folder wins.
+      if (overrides.destDir === undefined) body.dest_dir = "";
+      return api.add(body);
+    },
     onSuccess: (row) => {
       void client.invalidateQueries({ queryKey: DOWNLOADS });
       select(row.id);
@@ -324,6 +336,34 @@ function Form({ initialUrl, onDone }: { initialUrl: string; onDone: () => void }
             <Switch checked={choices.paused} onCheckedChange={(checked) => change({ paused: checked })} />
             {t("add.start_paused")}
           </label>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={t("add.checksum")} htmlFor="add-checksum" hint={t("add.checksum.hint")}>
+            <Input
+              id="add-checksum"
+              dir="ltr"
+              className="font-mono text-xs"
+              spellCheck={false}
+              value={choices.checksum}
+              onChange={(event) => change({ checksum: event.target.value })}
+            />
+          </Field>
+          {browsers.data?.length ? (
+            <Field label={t("add.browser_cookies")} htmlFor="add-browser">
+              <Select
+                id="add-browser"
+                value={choices.browser}
+                onChange={(event) => change({ browser: event.target.value })}
+              >
+                <option value="">{t("add.browser_cookies.none")}</option>
+                {browsers.data.map((name) => (
+                  <option key={name} value={name}>
+                    {name[0]?.toUpperCase() + name.slice(1)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
         </div>
         {add.error ? <p className="text-sm text-danger">{add.error.message}</p> : null}
       </div>

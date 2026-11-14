@@ -15,6 +15,8 @@ export interface DaemonEvent {
 
 export const DOWNLOADS = ["downloads"] as const;
 export const MEDIA = ["capture", "media"] as const;
+export const QUEUE = ["queue"] as const;
+export const SCHEDULES = ["schedules"] as const;
 
 /** A video sayl-capture saw on a page, for the floating bar; not a captured download. */
 export function isMediaReport(event: DaemonEvent): boolean {
@@ -36,11 +38,16 @@ const num = (value: unknown, fallback: number) => (typeof value === "number" ? v
  * Apply an event to the cached list. Progress arrives several times a second, so it is patched
  * in place; anything else changes more than the event carries, and the list is fetched again.
  */
+/** Events about the queue, schedules, and site grabs: they never change the downloads list. */
+export function isQueueEvent(event: DaemonEvent): boolean {
+  return /^(queue|schedule|schedules|grab)\./.test(event.event);
+}
+
 export function applyEvent(
   list: Download[] | undefined,
   event: DaemonEvent,
 ): { list: Download[] | undefined; refetch: boolean } {
-  if (isMediaReport(event)) return { list, refetch: false };
+  if (isMediaReport(event) || isQueueEvent(event)) return { list, refetch: false };
   if (!list) return { list, refetch: true };
   if (event.event === "download.progress") {
     const index = list.findIndex((row) => row.id === event.id);
@@ -85,6 +92,11 @@ function handle(client: QueryClient, event: DaemonEvent, refetch: () => void): v
   if (list) client.setQueryData(DOWNLOADS, list);
   if (event.id) void client.invalidateQueries({ queryKey: ["download", event.id] });
   if (isMediaReport(event)) void client.invalidateQueries({ queryKey: MEDIA });
+  if (isQueueEvent(event)) {
+    void client.invalidateQueries({ queryKey: QUEUE });
+    void client.invalidateQueries({ queryKey: SCHEDULES });
+    if (event.event === "grab.updated") void client.invalidateQueries({ queryKey: ["grab", event.id] });
+  }
   if (event.event === "download.removed" && useUi.getState().selected === event.id) {
     useUi.getState().select(null);
   }

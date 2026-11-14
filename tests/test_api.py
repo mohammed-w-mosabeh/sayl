@@ -10,8 +10,9 @@ import pytest
 import websockets
 
 from daemon.api import VERSION, DownloadOut
+from daemon.engines.base import Progress
 from daemon.engines.hybrid import NETWORK_LOST, HybridEngine
-from daemon.models import Download, EngineName, PolicyReason
+from daemon.models import Download, EngineName, PolicyReason, Status
 from daemon.openapi import schema
 from daemon.vault import Vault
 from tests.origin import BODY, ETAG, SHA256, SIZE, TOKEN, Origin, open_stream
@@ -81,6 +82,19 @@ async def test_acceptance_session_bound_link_finishes_on_the_stream(
     policy = stack.daemon.services.store.policy("127.0.0.1")
     assert policy is not None
     assert policy.reason is PolicyReason.AUTH
+
+
+async def test_stale_progress_does_not_undo_a_finish(stack: Stack) -> None:
+    """poll() may read a capture's progress just before the stream ends and write it after."""
+    services = stack.daemon.services
+    row = services.store.add(Download(url="https://a.example/f.bin", engine=EngineName.HYBRID))
+    services.queue.active[row.id] = EngineName.HYBRID
+    services.store.update(row.id, status=Status.COMPLETED, done_bytes=SIZE)
+    await services.queue.apply(row, Progress(Status.ACTIVE, SIZE, SIZE // 2))
+    after = services.store.download(row.id)
+    assert after is not None
+    assert after.status is Status.COMPLETED
+    assert after.done_bytes == SIZE
 
 
 async def test_acceptance_range_capable_link_is_accelerated(stack: Stack, origin: Origin) -> None:
@@ -318,7 +332,8 @@ async def test_settings_categories_and_schedules(stack: Stack) -> None:
 
     made = (await stack.client.post("/categories", json={"name": "ISO"})).json()
     await stack.client.put(f"/categories/{made['id']}", json={"name": "Images"})
-    assert (await stack.client.get("/categories")).json()[0]["name"] == "Images"
+    names = [item["name"] for item in (await stack.client.get("/categories")).json()]
+    assert "Images" in names and "ISO" not in names
     assert (await stack.client.delete(f"/categories/{made['id']}")).status_code == 204
     assert (await stack.client.delete("/categories/none")).status_code == 404
 

@@ -9,6 +9,12 @@ export type Info = Schemas["InfoOut"];
 export type Category = Schemas["Category"];
 export type AddDownload = Schemas["AddDownload"];
 export type Status = Download["status"];
+export type Schedule = Schemas["ScheduleOut"];
+export type ScheduleIn = Schemas["ScheduleIn"];
+export type QueueState = Schemas["QueueOut"];
+export type Grab = Schemas["GrabOut"];
+export type GrabIn = Schemas["GrabIn"];
+export type BatchIn = Schemas["BatchIn"];
 
 export type Api = ReturnType<typeof makeApi>;
 
@@ -80,5 +86,28 @@ export function makeApi(connection: Connection, fetcher: typeof fetch = globalTh
     addCategory: (body: Category) => unwrap(client.POST("/categories", { body })),
     removeCategory: (key: string) =>
       unwrap(client.DELETE("/categories/{key}", { params: { path: { key } } })),
+    replaceCategory: (key: string, body: Category) =>
+      unwrap(client.PUT("/categories/{key}", { params: { path: { key } }, body })),
+    schedules: () => unwrap(client.GET("/schedules")),
+    addSchedule: (body: ScheduleIn) => unwrap(client.POST("/schedules", { body })),
+    replaceSchedule: (key: string, body: ScheduleIn) =>
+      unwrap(client.PUT("/schedules/{key}", { params: { path: { key } }, body })),
+    removeSchedule: (key: string) =>
+      unwrap(client.DELETE("/schedules/{key}", { params: { path: { key } } })),
+    runSchedule: (key: string) =>
+      unwrap(client.POST("/schedules/{key}/run", { params: { path: { key } } })),
+    queue: () => unwrap(client.GET("/queue")),
+    startQueue: () => unwrap(client.POST("/queue/start")),
+    stopQueue: () => unwrap(client.POST("/queue/stop")),
+    cancelPostAction: () => unwrap(client.POST("/queue/post-action/cancel")),
+    verify: (download: string, checksum = "") =>
+      unwrap(client.POST("/downloads/{download_id}/verify", { ...id(download), body: { checksum } })),
+    batch: (body: BatchIn) => unwrap(client.POST("/batch", { body })),
+    grab: (body: GrabIn) => unwrap(client.POST("/grab-site", { body })),
+    grabStatus: (grab: string) =>
+      unwrap(client.GET("/grab-site/{grab_id}", { params: { path: { grab_id: grab } } })),
+    cancelGrab: (grab: string) =>
+      unwrap(client.DELETE("/grab-site/{grab_id}", { params: { path: { grab_id: grab } } })),
+    browsers: () => unwrap(client.GET("/browsers")),
   };
 }

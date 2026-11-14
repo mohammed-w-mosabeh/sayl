@@ -12,6 +12,8 @@ const choices: Choices = {
   destDir: "/d",
   limit: "512",
   paused: true,
+  checksum: "",
+  browser: "",
 };
 
 const video: Probe = {
@@ -29,6 +31,18 @@ const video: Probe = {
 };
 
 describe("buildRequest", () => {
+  it("adds a checksum and a browser's cookies only when chosen", () => {
+    const plain = { ...video, engine: "aria2" as const, formats: [], entries: [] };
+    const body = buildRequest("https://e.example/f", plain, {
+      ...choices,
+      checksum: " sha256:ab ",
+      browser: "firefox",
+    });
+    expect(body.checksum).toBe("sha256:ab");
+    expect(body.cookies_from_browser).toBe("firefox");
+    expect(buildRequest("https://e.example/f", plain, choices)).not.toHaveProperty("checksum");
+  });
+
   it("sends a plain file with its name, folder, and limit in bytes", () => {
     const body = buildRequest(" https://e.example/f ", { ...video, engine: "aria2", formats: [], entries: [] }, choices);
     expect(body).toEqual({

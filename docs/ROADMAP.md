@@ -62,10 +62,11 @@ Claude Code updates these checkboxes at the end of each phase. Acceptance criter
 - [x] Acceptance: no added stalls on a 10-minute 1080p HLS stream, compared with no proxy
 
 ## Phase 6 — IDM parity
-- [ ] Scheduler, speed schedules, post-completion actions
-- [ ] Auto categories, checksum verification, expired-link refresh UI
-- [ ] Browser cookie import
-- [ ] Site grabber, batch download, torrent/magnet, outbound proxy
+- [x] Scheduler, speed schedules, post-completion actions
+- [x] Auto categories, checksum verification, expired-link refresh UI
+- [x] Browser cookie import
+- [x] Site grabber, batch download, torrent/magnet, outbound proxy
+- [x] Acceptance: a scheduled queue starts and stops on time and runs the post action
 
 ## Phase 7 — Packaging  (tag `v1.0.0`)
 - [ ] systemd user unit

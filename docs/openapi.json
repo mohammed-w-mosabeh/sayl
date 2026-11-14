@@ -19,6 +19,11 @@
       ],
       "title": "Category"
      },
+     "checksum": {
+      "default": "",
+      "title": "Checksum",
+      "type": "string"
+     },
      "cookies": {
       "default": "",
       "title": "Cookies",
@@ -153,6 +158,94 @@
      "url"
     ],
     "title": "AttachDownload",
+    "type": "object"
+   },
+   "BatchIn": {
+    "description": "Links taken as they are, patterns such as file[001-100].jpg that expand, or both.",
+    "properties": {
+     "category": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Category"
+     },
+     "cookies": {
+      "default": "",
+      "title": "Cookies",
+      "type": "string"
+     },
+     "cookies_from_browser": {
+      "default": "",
+      "title": "Cookies From Browser",
+      "type": "string"
+     },
+     "dest_dir": {
+      "default": "",
+      "title": "Dest Dir",
+      "type": "string"
+     },
+     "headers": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "default": {},
+      "title": "Headers",
+      "type": "object"
+     },
+     "patterns": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Patterns",
+      "type": "array"
+     },
+     "referer": {
+      "default": "",
+      "title": "Referer",
+      "type": "string"
+     },
+     "speed_limit": {
+      "default": 0,
+      "title": "Speed Limit",
+      "type": "integer"
+     },
+     "start_paused": {
+      "default": false,
+      "title": "Start Paused",
+      "type": "boolean"
+     },
+     "urls": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Urls",
+      "type": "array"
+     }
+    },
+    "title": "BatchIn",
+    "type": "object"
+   },
+   "BatchOut": {
+    "properties": {
+     "ids": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Ids",
+      "type": "array"
+     }
+    },
+    "required": [
+     "ids"
+    ],
+    "title": "BatchOut",
     "type": "object"
    },
    "BypassReport": {
@@ -483,6 +576,138 @@
     "title": "EngineName",
     "type": "string"
    },
+   "GrabFile": {
+    "properties": {
+     "page": {
+      "title": "Page",
+      "type": "string"
+     },
+     "size": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Size"
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     }
+    },
+    "required": [
+     "url",
+     "size",
+     "page"
+    ],
+    "title": "GrabFile",
+    "type": "object"
+   },
+   "GrabIn": {
+    "properties": {
+     "cookies": {
+      "default": "",
+      "title": "Cookies",
+      "type": "string"
+     },
+     "cookies_from_browser": {
+      "default": "",
+      "title": "Cookies From Browser",
+      "type": "string"
+     },
+     "depth": {
+      "default": 2,
+      "title": "Depth",
+      "type": "integer"
+     },
+     "extensions": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Extensions",
+      "type": "array"
+     },
+     "max_pages": {
+      "default": 200,
+      "title": "Max Pages",
+      "type": "integer"
+     },
+     "max_size": {
+      "default": 0,
+      "title": "Max Size",
+      "type": "integer"
+     },
+     "min_size": {
+      "default": 0,
+      "title": "Min Size",
+      "type": "integer"
+     },
+     "referer": {
+      "default": "",
+      "title": "Referer",
+      "type": "string"
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     }
+    },
+    "required": [
+     "url"
+    ],
+    "title": "GrabIn",
+    "type": "object"
+   },
+   "GrabOut": {
+    "properties": {
+     "error": {
+      "title": "Error",
+      "type": "string"
+     },
+     "files": {
+      "items": {
+       "$ref": "#/components/schemas/GrabFile"
+      },
+      "title": "Files",
+      "type": "array"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "pages": {
+      "title": "Pages",
+      "type": "integer"
+     },
+     "skipped_robots": {
+      "title": "Skipped Robots",
+      "type": "integer"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "url",
+     "status",
+     "error",
+     "pages",
+     "skipped_robots",
+     "files"
+    ],
+    "title": "GrabOut",
+    "type": "object"
+   },
    "HTTPValidationError": {
     "properties": {
      "detail": {
@@ -596,6 +821,16 @@
     "title": "PatchDownload",
     "type": "object"
    },
+   "PostAction": {
+    "enum": [
+     "none",
+     "shutdown",
+     "suspend",
+     "command"
+    ],
+    "title": "PostAction",
+    "type": "string"
+   },
    "Probe": {
     "properties": {
      "headers": {
@@ -704,6 +939,33 @@
     "title": "ProbeOut",
     "type": "object"
    },
+   "QueueOut": {
+    "properties": {
+     "post_action": {
+      "$ref": "#/components/schemas/PostAction"
+     },
+     "post_action_armed": {
+      "title": "Post Action Armed",
+      "type": "boolean"
+     },
+     "post_action_pending": {
+      "title": "Post Action Pending",
+      "type": "boolean"
+     },
+     "running": {
+      "title": "Running",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "running",
+     "post_action",
+     "post_action_armed",
+     "post_action_pending"
+    ],
+    "title": "QueueOut",
+    "type": "object"
+   },
    "RefreshUrl": {
     "properties": {
      "headers": {
@@ -725,15 +987,64 @@
     "title": "RefreshUrl",
     "type": "object"
    },
-   "Schedule": {
+   "ScheduleAction": {
+    "enum": [
+     "start_queue",
+     "stop_queue",
+     "speed_limit"
+    ],
+    "title": "ScheduleAction",
+    "type": "string"
+   },
+   "ScheduleIn": {
     "properties": {
      "action": {
-      "title": "Action",
-      "type": "string"
+      "$ref": "#/components/schemas/ScheduleAction"
      },
      "cron": {
       "title": "Cron",
       "type": "string"
+     },
+     "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "params": {
+      "additionalProperties": true,
+      "default": {},
+      "title": "Params",
+      "type": "object"
+     },
+     "post_action": {
+      "$ref": "#/components/schemas/PostAction",
+      "default": "none"
+     }
+    },
+    "required": [
+     "name",
+     "cron",
+     "action"
+    ],
+    "title": "ScheduleIn",
+    "type": "object"
+   },
+   "ScheduleOut": {
+    "properties": {
+     "action": {
+      "$ref": "#/components/schemas/ScheduleAction"
+     },
+     "cron": {
+      "title": "Cron",
+      "type": "string"
+     },
+     "enabled": {
+      "title": "Enabled",
+      "type": "boolean"
      },
      "id": {
       "title": "Id",
@@ -743,23 +1054,37 @@
       "title": "Name",
       "type": "string"
      },
-     "params_json": {
-      "default": "{}",
-      "title": "Params Json",
-      "type": "string"
+     "next_run": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Run"
+     },
+     "params": {
+      "additionalProperties": true,
+      "title": "Params",
+      "type": "object"
      },
      "post_action": {
-      "default": "none",
-      "title": "Post Action",
-      "type": "string"
+      "$ref": "#/components/schemas/PostAction"
      }
     },
     "required": [
+     "id",
      "name",
      "cron",
-     "action"
+     "action",
+     "params",
+     "post_action",
+     "enabled",
+     "next_run"
     ],
-    "title": "Schedule",
+    "title": "ScheduleOut",
     "type": "object"
    },
    "Status": {
@@ -815,6 +1140,45 @@
     ],
     "title": "ValidationError",
     "type": "object"
+   },
+   "VerifyIn": {
+    "properties": {
+     "checksum": {
+      "default": "",
+      "title": "Checksum",
+      "type": "string"
+     }
+    },
+    "title": "VerifyIn",
+    "type": "object"
+   },
+   "VerifyOut": {
+    "properties": {
+     "actual": {
+      "title": "Actual",
+      "type": "string"
+     },
+     "algo": {
+      "title": "Algo",
+      "type": "string"
+     },
+     "expected": {
+      "title": "Expected",
+      "type": "string"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "ok",
+     "algo",
+     "expected",
+     "actual"
+    ],
+    "title": "VerifyOut",
+    "type": "object"
    }
   },
   "securitySchemes": {
@@ -830,6 +1194,78 @@
  },
  "openapi": "3.1.0",
  "paths": {
+  "/batch": {
+   "post": {
+    "description": "Queue every link, in order, once each, with the same options.",
+    "operationId": "add_batch_batch_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BatchIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BatchOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Add Batch"
+   }
+  },
+  "/browsers": {
+   "get": {
+    "description": "Browsers with a profile here, for cookies_from_browser.",
+    "operationId": "list_browsers_browsers_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "type": "string"
+         },
+         "title": "Response List Browsers Browsers Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List Browsers"
+   }
+  },
   "/capture": {
    "get": {
     "operationId": "capture_status_capture_get",
@@ -1680,6 +2116,184 @@
     "summary": "Put Stream"
    }
   },
+  "/downloads/{download_id}/verify": {
+   "post": {
+    "description": "Hash the finished file and compare. The result is stored as checksum_ok.",
+    "operationId": "verify_downloads__download_id__verify_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "download_id",
+      "required": true,
+      "schema": {
+       "title": "Download Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/VerifyIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/VerifyOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Verify"
+   }
+  },
+  "/grab-site": {
+   "post": {
+    "description": "Start crawling one site for files. Poll GET /grab-site/{id}, then queue with /batch.",
+    "operationId": "grab_site_grab_site_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GrabIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/GrabOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Grab Site"
+   }
+  },
+  "/grab-site/{grab_id}": {
+   "delete": {
+    "operationId": "grab_cancel_grab_site__grab_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "grab_id",
+      "required": true,
+      "schema": {
+       "title": "Grab Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Grab Cancel"
+   },
+   "get": {
+    "operationId": "grab_status_grab_site__grab_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "grab_id",
+      "required": true,
+      "schema": {
+       "title": "Grab Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/GrabOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Grab Status"
+   }
+  },
   "/info": {
    "get": {
     "operationId": "info_info_get",
@@ -1746,18 +2360,111 @@
     "summary": "Probe"
    }
   },
+  "/queue": {
+   "get": {
+    "operationId": "queue_state_queue_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/QueueOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Queue State"
+   }
+  },
+  "/queue/post-action/cancel": {
+   "post": {
+    "description": "Cancel a shutdown, suspend, or command before it runs.",
+    "operationId": "cancel_post_action_queue_post_action_cancel_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/QueueOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Cancel Post Action"
+   }
+  },
+  "/queue/start": {
+   "post": {
+    "operationId": "queue_start_queue_start_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/QueueOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Queue Start"
+   }
+  },
+  "/queue/stop": {
+   "post": {
+    "operationId": "queue_stop_queue_stop_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/QueueOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Queue Stop"
+   }
+  },
   "/schedules": {
    "get": {
-    "operationId": "list/schedules",
+    "operationId": "list_schedules_schedules_get",
     "responses": {
      "200": {
       "content": {
        "application/json": {
         "schema": {
          "items": {
-          "$ref": "#/components/schemas/Schedule"
+          "$ref": "#/components/schemas/ScheduleOut"
          },
-         "title": "Response List/Schedules",
+         "title": "Response List Schedules Schedules Get",
          "type": "array"
         }
        }
@@ -1770,15 +2477,15 @@
       "HTTPBearer": []
      }
     ],
-    "summary": "Read All"
+    "summary": "List Schedules"
    },
    "post": {
-    "operationId": "create/schedules",
+    "operationId": "create_schedule_schedules_post",
     "requestBody": {
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/Schedule"
+        "$ref": "#/components/schemas/ScheduleIn"
        }
       }
      },
@@ -1789,7 +2496,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "$ref": "#/components/schemas/Schedule"
+         "$ref": "#/components/schemas/ScheduleOut"
         }
        }
       },
@@ -1811,12 +2518,12 @@
       "HTTPBearer": []
      }
     ],
-    "summary": "Create"
+    "summary": "Create Schedule"
    }
   },
   "/schedules/{key}": {
    "delete": {
-    "operationId": "delete/schedules",
+    "operationId": "delete_schedule_schedules__key__delete",
     "parameters": [
      {
       "in": "path",
@@ -1848,10 +2555,10 @@
       "HTTPBearer": []
      }
     ],
-    "summary": "Remove"
+    "summary": "Delete Schedule"
    },
    "put": {
-    "operationId": "replace/schedules",
+    "operationId": "replace_schedule_schedules__key__put",
     "parameters": [
      {
       "in": "path",
@@ -1867,7 +2574,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/Schedule"
+        "$ref": "#/components/schemas/ScheduleIn"
        }
       }
      },
@@ -1878,7 +2585,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "$ref": "#/components/schemas/Schedule"
+         "$ref": "#/components/schemas/ScheduleOut"
         }
        }
       },
@@ -1900,7 +2607,45 @@
       "HTTPBearer": []
      }
     ],
-    "summary": "Replace"
+    "summary": "Replace Schedule"
+   }
+  },
+  "/schedules/{key}/run": {
+   "post": {
+    "description": "Do what the schedule does now, post action included.",
+    "operationId": "run_schedule_schedules__key__run_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "key",
+      "required": true,
+      "schema": {
+       "title": "Key",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Run Schedule"
    }
   },
   "/settings": {

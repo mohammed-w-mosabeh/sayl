@@ -188,6 +188,56 @@ function Limits({ row }: { row: Download }) {
   );
 }
 
+/** Whether the file matches its checksum, and a way to check it against one. */
+function Checksum({ row }: { row: Download }) {
+  const { t } = useI18n();
+  const api = useApi();
+  const client = useQueryClient();
+  const [value, setValue] = useState("");
+  const verify = useMutation({
+    mutationFn: () => api.verify(row.id, value.trim()),
+    onSuccess: () => {
+      setValue("");
+      void client.invalidateQueries({ queryKey: DOWNLOADS });
+    },
+  });
+  const algo = row.checksum_algo || "sha256";
+  const state =
+    row.checksum_ok === true
+      ? { text: t("details.checksum.ok", { algo }), className: "text-success" }
+      : row.checksum_ok === false
+        ? { text: t("details.checksum.bad", { algo }), className: "text-danger" }
+        : { text: t("details.checksum.unchecked"), className: "text-muted-foreground" };
+  return (
+    <div className="grid gap-1.5">
+      <p className={`text-sm ${state.className}`} role="status">
+        {state.text}
+      </p>
+      <form
+        className="flex gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          verify.mutate();
+        }}
+      >
+        <Input
+          dir="ltr"
+          aria-label={t("details.checksum")}
+          placeholder={row.checksum_expected ? row.checksum_expected.slice(0, 16) + "…" : "sha256:…"}
+          className="h-8 font-mono text-xs"
+          spellCheck={false}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+        <Button type="submit" size="sm" disabled={verify.isPending || (!value.trim() && !row.checksum_expected)}>
+          {t("details.verify")}
+        </Button>
+      </form>
+      {verify.error ? <p className="text-xs text-danger">{verify.error.message}</p> : null}
+    </div>
+  );
+}
+
 export function Details({ row }: { row: Download }) {
   const i18n = useI18n();
   const { t } = i18n;
@@ -270,6 +320,11 @@ export function Details({ row }: { row: Download }) {
           <Row label={t("details.added")}>{dateTime(i18n, row.created_at)}</Row>
           {row.started_at ? <Row label={t("details.started")}>{dateTime(i18n, row.started_at)}</Row> : null}
           {row.finished_at ? <Row label={t("details.finished")}>{dateTime(i18n, row.finished_at)}</Row> : null}
+          {row.status === "completed" ? (
+            <Row label={t("details.checksum")}>
+              <Checksum key={row.id} row={row} />
+            </Row>
+          ) : null}
           {row.error ? (
             <Row label={t("details.error")}>
               <span dir="auto" className="text-danger">

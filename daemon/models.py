@@ -111,13 +111,27 @@ class HostPolicy(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
+class ScheduleAction(StrEnum):
+    START_QUEUE = "start_queue"
+    STOP_QUEUE = "stop_queue"
+    SPEED_LIMIT = "speed_limit"
+
+
+class PostAction(StrEnum):
+    NONE = "none"
+    SHUTDOWN = "shutdown"
+    SUSPEND = "suspend"
+    COMMAND = "command"
+
+
 class Schedule(SQLModel, table=True):
     id: str = Field(default_factory=new_id, primary_key=True)
     name: str
-    cron: str
-    action: str
-    params_json: str = "{}"
-    post_action: str = "none"
+    cron: str  # Five crontab fields, or six with seconds first.
+    action: str  # A ScheduleAction.
+    params_json: str = "{}"  # speed_limit: {"limit": B/s}; command: {"command": [argv...]}.
+    post_action: str = "none"  # A PostAction, run once the queue a start_queue began is empty.
+    enabled: bool = True
 
 
 class Setting(SQLModel, table=True):

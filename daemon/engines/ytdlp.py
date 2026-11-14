@@ -160,6 +160,7 @@ class YtDlpEngine(Engine):
         self.factory = factory
         self.runs: dict[str, _Run] = {}
         self.global_limit = 0
+        self.proxy = ""  # Any proxy URL yt-dlp takes, or "" for direct.
 
     async def probe(self, url: str, headers: dict[str, str]) -> ProbeResult:
         def extract() -> dict[str, Any]:
@@ -205,6 +206,8 @@ class YtDlpEngine(Engine):
         rate = self._rate(job)
         if rate:
             options["ratelimit"] = rate
+        if self.proxy:
+            options["proxy"] = self.proxy
         return {**options, **media_options(job)}
 
     def _on_progress(self, run: _Run, update: dict[str, Any]) -> None:

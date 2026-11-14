@@ -72,6 +72,12 @@ class Origin:
                 writer.write(body)
 
         common = ["Accept-Ranges: bytes", f"ETag: {ETAG}"]
+        if path == "/site/":  # A page for the site grabber.
+            page = b'<a href="one.zip">1</a> <a href="/site/two.iso">2</a> <a href="x.html">x</a>'
+            return send("200 OK", page, "Content-Type: text/html; charset=utf-8")
+        if path.startswith("/named?"):  # /named?<file>: the name only arrives in the headers.
+            name = path.removeprefix("/named?")
+            common.append(f'Content-Disposition: attachment; filename="{name}"')
         if path.startswith("/x3/"):
             body = BODY * 3
             if wanted is None:

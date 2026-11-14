@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+- Phase 6 scheduler: cron schedules start or stop the queue, or set the speed limit (five crontab fields, Sunday as 0 or 7, or six with seconds). Stopping the queue pauses what runs and starts nothing new; captured streams keep going. A start_queue schedule can shut down, suspend (through logind), or run a command once its queue is empty, after 60 s in which it can be cancelled; an empty queue never triggers it.
+- Auto categories: six defaults, matched by extension or MIME type when a download is added, captured, or (for a name only known at the end) completed. A category's folder applies unless the user chose one.
+- Checksums: `checksum` on add (`sha256:HEX`, aria2's `sha-256=HEX`, or bare hex), checked when the download completes and on demand (`POST /downloads/{id}/verify`, `sayl verify`).
+- Browser cookie import for every download, not only yt-dlp: Firefox and the Chromium family, read once a minute at most. `GET /browsers` lists the browsers found.
+- Batch download (`POST /batch`, `sayl batch`): links and patterns such as `file[001-100].jpg`, up to 10,000 at once.
+- Site grabber (`POST /grab-site`, `sayl grab`): crawls one host by depth, type, and size, honours robots.txt, and lists the files; the user picks which to download.
+- Torrents and magnets: a magnet follows its metadata to its files; a finished torrent counts as completed and seeds in the background until ratio 1.0 or 60 minutes; local `.torrent` files.
+- Outbound HTTP or SOCKS5 proxy for every connection, aria2 included through a local CONNECT bridge.
+- Desktop app: schedules, queue control and post-action banner, batch and grab dialogs, checksum and browser cookies on add, Verify, proxy, and per-category folders.
 
 ## [0.2.0] - 2026-11-14
 - CI: a `real-sites` workflow runs the Google Drive acceptance test (1.3 GB behind the virus-scan page, 400 KB/s limit) on demand.

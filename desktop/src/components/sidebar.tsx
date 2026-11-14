@@ -15,6 +15,7 @@ import {
 import { useApi } from "@/components/providers";
 import type { Download } from "@/lib/api/client";
 import { useI18n, type Key } from "@/lib/i18n";
+import { categoryName } from "@/lib/categories";
 import { useUi, type Filter } from "@/lib/prefs";
 import { counts, FILTER_ORDER } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -89,7 +90,7 @@ export function Sidebar({ rows }: { rows: Download[] }) {
             <Item
               key={item.id}
               icon={Folder}
-              label={item.name}
+              label={categoryName(t, item.name)}
               count={rows.filter((row) => row.category_id === item.id).length}
               active={category === item.id}
               onClick={() => setCategory(item.id ?? null)}

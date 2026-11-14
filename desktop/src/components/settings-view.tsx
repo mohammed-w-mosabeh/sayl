@@ -1,17 +1,22 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Play, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { useApi } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import type { Category, ScheduleIn } from "@/lib/api/client";
 import { inTauri } from "@/lib/api/connection";
+import { categoryName } from "@/lib/categories";
+import { SCHEDULES } from "@/lib/events";
+import { dateTime } from "@/lib/format";
 import { languages, useI18n, type Key, type Language } from "@/lib/i18n";
 import { dropTargetVisible, setDropTarget } from "@/lib/native";
 import { useUi, type Theme } from "@/lib/prefs";
+import { cronFor, type Days } from "@/lib/schedules";
 
 function Section({ title, body, children }: { title: string; body?: string; children: ReactNode }) {
   return (
@@ -124,6 +129,11 @@ function Categories() {
     },
   });
   const remove = useMutation({ mutationFn: api.removeCategory, onSuccess: refresh });
+  const move = useMutation({
+    mutationFn: ({ item, dest }: { item: Category; dest: string }) =>
+      api.replaceCategory(item.id ?? "", { ...item, dest_dir: dest }),
+    onSuccess: refresh,
+  });
 
   return (
     <Section title={t("settings.categories")} body={t("settings.categories.body")}>
@@ -132,14 +142,22 @@ function Categories() {
           {categories.data.map((item) => (
             <li key={item.id} className="flex items-center gap-3 px-3 py-2 text-sm">
               <span dir="auto" className="w-32 truncate font-medium">
-                {item.name}
+                {categoryName(t, item.name)}
               </span>
-              <bdi dir="ltr" className="min-w-0 flex-1 truncate text-muted-foreground">
+              <bdi dir="ltr" className="min-w-0 flex-1 truncate text-muted-foreground" title={item.extensions}>
                 {item.extensions}
               </bdi>
-              <bdi dir="ltr" className="hidden min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground md:block">
-                {item.dest_dir}
-              </bdi>
+              <Input
+                dir="ltr"
+                aria-label={t("settings.categories.dest")}
+                placeholder={t("settings.categories.folder_default")}
+                defaultValue={item.dest_dir}
+                className="hidden h-8 min-w-0 flex-1 font-mono text-xs md:block"
+                onBlur={(event) => {
+                  const dest = event.target.value.trim();
+                  if (dest !== (item.dest_dir ?? "")) move.mutate({ item, dest });
+                }}
+              />
               <Button
                 size="icon"
                 variant="ghost"
@@ -187,6 +205,239 @@ function Categories() {
         </Button>
       </form>
       {add.error ? <p className="text-sm text-danger">{add.error.message}</p> : null}
+    </Section>
+  );
+}
+
+const EMPTY_SCHEDULE = {
+  name: "",
+  time: "02:00",
+  days: "every" as Days,
+  cron: "",
+  action: "start_queue" as ScheduleIn["action"],
+  limit: "0",
+  after: "none" as NonNullable<ScheduleIn["post_action"]>,
+  command: "",
+};
+
+function Schedules() {
+  const i18n = useI18n();
+  const { t } = i18n;
+  const api = useApi();
+  const client = useQueryClient();
+  const schedules = useQuery({ queryKey: SCHEDULES, queryFn: api.schedules });
+  const refresh = () => void client.invalidateQueries({ queryKey: SCHEDULES });
+  const [draft, setDraft] = useState(EMPTY_SCHEDULE);
+  const cron = cronFor(draft.time, draft.days, draft.cron);
+  const body = (): ScheduleIn => ({
+    name: draft.name.trim() || t(`schedule.${draft.action}`),
+    cron,
+    action: draft.action,
+    params:
+      draft.action === "speed_limit"
+        ? { limit: Math.max(0, Math.round(Number(draft.limit) || 0)) * 1024 }
+        : draft.after === "command"
+          ? { command: draft.command.trim() }
+          : {},
+    post_action: draft.action === "start_queue" ? draft.after : "none",
+    enabled: true,
+  });
+  const add = useMutation({
+    mutationFn: () => api.addSchedule(body()),
+    onSuccess: () => {
+      setDraft(EMPTY_SCHEDULE);
+      refresh();
+    },
+  });
+  const toggle = useMutation({
+    mutationFn: (item: ScheduleIn & { id: string }) => api.replaceSchedule(item.id, item),
+    onSuccess: refresh,
+  });
+  const run = useMutation({ mutationFn: api.runSchedule });
+  const remove = useMutation({ mutationFn: api.removeSchedule, onSuccess: refresh });
+  const change = (values: Partial<typeof draft>) => setDraft({ ...draft, ...values });
+
+  return (
+    <Section title={t("settings.schedules")} body={t("settings.schedules.body")}>
+      {schedules.data?.length ? (
+        <ul className="divide-y rounded-md border">
+          {schedules.data.map((item) => (
+            <li key={item.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+              <Switch
+                aria-label={item.name}
+                checked={item.enabled}
+                onCheckedChange={(enabled) => toggle.mutate({ ...item, enabled })}
+              />
+              <div className="grid min-w-0 flex-1 gap-0.5">
+                <span dir="auto" className="truncate font-medium">
+                  {item.name}
+                </span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {t(`schedule.${item.action}`)}
+                  {item.post_action !== "none" ? ` · ${t(`post.${item.post_action}` as Key)}` : ""} ·{" "}
+                  <bdi dir="ltr" className="font-mono">
+                    {item.cron}
+                  </bdi>{" "}
+                  ·{" "}
+                  {item.next_run
+                    ? t("settings.schedules.next", { when: dateTime(i18n, item.next_run) })
+                    : t("settings.schedules.off")}
+                </span>
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label={t("settings.schedules.run")}
+                title={t("settings.schedules.run")}
+                onClick={() => run.mutate(item.id)}
+              >
+                <Play />
+              </Button>
+              <Button size="icon" variant="ghost" aria-label={t("action.remove")} onClick={() => remove.mutate(item.id)}>
+                <Trash2 />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t("settings.schedules.empty")}</p>
+      )}
+      <form
+        className="grid gap-3 sm:grid-cols-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (cron) add.mutate();
+        }}
+      >
+        <Field label={t("settings.schedules.name")} htmlFor="sched-name">
+          <Input id="sched-name" dir="auto" value={draft.name} onChange={(e) => change({ name: e.target.value })} />
+        </Field>
+        <Field label={t("settings.schedules.action")} htmlFor="sched-action">
+          <Select
+            id="sched-action"
+            value={draft.action}
+            onChange={(e) => change({ action: e.target.value as ScheduleIn["action"] })}
+          >
+            {(["start_queue", "stop_queue", "speed_limit"] as const).map((action) => (
+              <option key={action} value={action}>
+                {t(`schedule.${action}`)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={t("settings.schedules.days")} htmlFor="sched-days">
+          <Select id="sched-days" value={draft.days} onChange={(e) => change({ days: e.target.value as Days })}>
+            {(["every", "mon_fri", "sun_thu", "custom"] as const).map((days) => (
+              <option key={days} value={days}>
+                {t(`settings.schedules.days.${days}`)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {draft.days === "custom" ? (
+          <Field label={t("settings.schedules.cron")} htmlFor="sched-cron">
+            <Input
+              id="sched-cron"
+              dir="ltr"
+              className="font-mono"
+              placeholder="0 2 * * *"
+              value={draft.cron}
+              onChange={(e) => change({ cron: e.target.value })}
+            />
+          </Field>
+        ) : (
+          <Field label={t("settings.schedules.time")} htmlFor="sched-time">
+            <Input id="sched-time" type="time" dir="ltr" value={draft.time} onChange={(e) => change({ time: e.target.value })} />
+          </Field>
+        )}
+        {draft.action === "speed_limit" ? (
+          <Field label={t("settings.schedules.limit")} htmlFor="sched-limit">
+            <Input id="sched-limit" dir="ltr" inputMode="numeric" value={draft.limit} onChange={(e) => change({ limit: e.target.value })} />
+          </Field>
+        ) : null}
+        {draft.action === "start_queue" ? (
+          <Field label={t("settings.schedules.after")} htmlFor="sched-after" hint={t("settings.schedules.post_hint")}>
+            <Select
+              id="sched-after"
+              value={draft.after}
+              onChange={(e) => change({ after: e.target.value as typeof draft.after })}
+            >
+              {(["none", "shutdown", "suspend", "command"] as const).map((post) => (
+                <option key={post} value={post}>
+                  {t(`post.${post}`)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
+        {draft.action === "start_queue" && draft.after === "command" ? (
+          <Field label={t("settings.schedules.command")} htmlFor="sched-command">
+            <Input
+              id="sched-command"
+              dir="ltr"
+              className="font-mono"
+              placeholder="notify-send Done"
+              value={draft.command}
+              onChange={(e) => change({ command: e.target.value })}
+            />
+          </Field>
+        ) : null}
+        <div className="flex items-end sm:col-span-2">
+          <Button type="submit" disabled={!cron || add.isPending}>
+            <Plus />
+            {t("settings.schedules.add")}
+          </Button>
+        </div>
+      </form>
+      {add.error ? <p className="text-sm text-danger">{add.error.message}</p> : null}
+    </Section>
+  );
+}
+
+function OutboundProxy() {
+  const { t } = useI18n();
+  const api = useApi();
+  const client = useQueryClient();
+  const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings });
+  const [value, setValue] = useState<string | null>(null);
+  const stored = typeof settings.data?.outbound_proxy === "string" ? settings.data.outbound_proxy : "";
+  const shown = value ?? stored;
+  const save = useMutation({
+    mutationFn: () => api.putSettings({ outbound_proxy: shown.trim() }),
+    onSuccess: (data) => {
+      client.setQueryData(["settings"], data);
+      setValue(null);
+    },
+  });
+  return (
+    <Section title={t("settings.proxy")} body={t("settings.proxy.body")}>
+      <form
+        className="grid grid-cols-[1fr_auto] items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          save.mutate();
+        }}
+      >
+        <Field label={t("settings.proxy.url")} htmlFor="proxy-url" hint={t("settings.proxy.hint")}>
+          <Input
+            id="proxy-url"
+            dir="ltr"
+            className="font-mono"
+            autoComplete="off"
+            spellCheck={false}
+            value={shown}
+            onChange={(event) => {
+              setValue(event.target.value);
+              save.reset();
+            }}
+          />
+        </Field>
+        <Button type="submit" disabled={value === null || save.isPending} className="mb-5">
+          {save.isSuccess && value === null ? <Check /> : null}
+          {save.isSuccess && value === null ? t("settings.saved") : t("action.save")}
+        </Button>
+      </form>
+      {save.error ? <p className="text-sm text-danger">{save.error.message}</p> : null}
     </Section>
   );
 }
@@ -337,9 +588,13 @@ export function SettingsView() {
             <HostPolicy />
           </Section>
 
+          <Schedules />
+
           <Clipboard />
 
           <Categories />
+
+          <OutboundProxy />
 
           {info.data ? (
             <Section title={t("settings.about")}>

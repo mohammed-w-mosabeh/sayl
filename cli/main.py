@@ -1,7 +1,10 @@
 """Sayl command line interface."""
 
 import json
+import sys
+import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Annotated, Any
 
 import typer
@@ -11,6 +14,7 @@ from rich.table import Table
 
 from cli.client import Client, ClientError
 from cli.doctor import Status, has_failures, run_checks
+from daemon.batch import pattern_ranges
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 console = Console()
@@ -74,9 +78,19 @@ def add(
     limit: Annotated[int, typer.Option(help="Speed limit in bytes per second.")] = 0,
     referer: Annotated[str, typer.Option(help="Referer header.")] = "",
     paused: Annotated[bool, typer.Option(help="Add without starting.")] = False,
+    checksum: Annotated[
+        str, typer.Option(help="Expected checksum, as sha256:HEX or bare hex; checked at the end.")
+    ] = "",
+    cookies_from_browser: Annotated[
+        str,
+        typer.Option(help="Send the cookies this browser holds for the site: firefox, chrome, ..."),
+    ] = "",
     as_json: AsJson = False,
 ) -> None:
-    """Add a download."""
+    """Add a download: a link, a magnet, or a .torrent file on this machine."""
+    local = Path(url).expanduser()
+    if not url.startswith(("http://", "https://", "ftp://", "magnet:")) and local.is_file():
+        url = local.resolve().as_uri()  # The daemon may run in another directory.
     body = {
         "url": url,
         "dest_dir": dest,
@@ -88,6 +102,8 @@ def add(
         "speed_limit": limit,
         "referer": referer,
         "start_paused": paused,
+        "checksum": checksum,
+        "cookies_from_browser": cookies_from_browser,
     }
     row = _guarded(lambda: _client().call("POST", "/downloads", json=body))
     if as_json:
@@ -155,6 +171,126 @@ def refresh(download_id: DownloadId, url: str) -> None:
 
     row = _guarded(run)
     console.print(f"{row['id'][:ID_LENGTH]} {row['status']}", highlight=False)
+
+
+@app.command()
+def batch(
+    links: Annotated[
+        list[str] | None,
+        typer.Argument(help="Links, or patterns such as 'https://h/f[001-100].jpg'."),
+    ] = None,
+    file: Annotated[
+        str, typer.Option(help="Read links from this file, one per line; - for stdin.")
+    ] = "",
+    dest: Annotated[str, typer.Option(help="Destination directory.")] = "",
+    referer: Annotated[str, typer.Option(help="Referer header.")] = "",
+    limit: Annotated[int, typer.Option(help="Speed limit per download, in bytes per second.")] = 0,
+    paused: Annotated[bool, typer.Option(help="Add without starting.")] = False,
+    cookies_from_browser: Annotated[
+        str,
+        typer.Option(help="Send the cookies this browser holds for the site: firefox, chrome, ..."),
+    ] = "",
+) -> None:
+    """Add many downloads at once. A [1-10], [01-10], or [a-z] range expands."""
+    items = list(links or [])
+    if file:
+        text = sys.stdin.read() if file == "-" else Path(file).expanduser().read_text()
+        items += [line.strip() for line in text.splitlines()]
+    items = [item for item in items if item and not item.startswith("#")]
+    patterns = [item for item in items if pattern_ranges(item)]
+    body = {
+        "urls": [item for item in items if not pattern_ranges(item)],
+        "patterns": patterns,
+        "dest_dir": dest,
+        "referer": referer,
+        "speed_limit": limit,
+        "start_paused": paused,
+        "cookies_from_browser": cookies_from_browser,
+    }
+    result = _guarded(lambda: _client().call("POST", "/batch", json=body))
+    console.print(f"added {len(result['ids'])} downloads", highlight=False)
+
+
+@app.command()
+def grab(
+    url: str,
+    depth: Annotated[int, typer.Option(help="Links away from the start page, at most 5.")] = 2,
+    ext: Annotated[
+        str, typer.Option(help="Only these types, such as pdf,zip. Default: common downloads.")
+    ] = "",
+    min_size: Annotated[int, typer.Option(help="Smallest file in bytes.")] = 0,
+    max_size: Annotated[int, typer.Option(help="Largest file in bytes, 0 = no limit.")] = 0,
+    max_pages: Annotated[int, typer.Option(help="Pages to read at most.")] = 200,
+    queue: Annotated[bool, typer.Option("--queue", help="Download every file found.")] = False,
+    dest: Annotated[str, typer.Option(help="Destination directory, with --queue.")] = "",
+    as_json: AsJson = False,
+) -> None:
+    """Crawl one site for files. Shows what it finds; --queue downloads them."""
+    body = {
+        "url": url,
+        "depth": depth,
+        "extensions": [item for item in ext.split(",") if item.strip()],
+        "min_size": min_size,
+        "max_size": max_size,
+        "max_pages": max_pages,
+    }
+
+    def run() -> dict[str, Any]:
+        client = _client()
+        result: dict[str, Any] = client.call("POST", "/grab-site", json=body)
+        while result["status"] == "running":
+            time.sleep(0.5)
+            result = client.call("GET", f"/grab-site/{result['id']}")
+        return result
+
+    result = _guarded(run)
+    if as_json:
+        _print_json(result)
+    else:
+        table = Table("size", "file")
+        for item in result["files"]:
+            table.add_row(
+                size(item["size"]) if item["size"] is not None else "?", escape(item["url"])
+            )
+        console.print(table)
+        console.print(
+            f"{len(result['files'])} files on {result['pages']} pages ({result['status']})",
+            highlight=False,
+        )
+    if result["status"] == "failed":
+        raise _fail(ClientError(result["error"] or "the grab failed"))
+    if queue and result["files"]:
+        links = [item["url"] for item in result["files"]]
+        added = _guarded(
+            lambda: _client().call("POST", "/batch", json={"urls": links, "dest_dir": dest})
+        )
+        console.print(f"added {len(added['ids'])} downloads", highlight=False)
+
+
+@app.command()
+def verify(
+    download_id: DownloadId,
+    checksum: Annotated[
+        str, typer.Argument(help="sha256:HEX, or bare hex. Default: the stored one.")
+    ] = "",
+) -> None:
+    """Check a finished file against a checksum. Exits 1 on a mismatch."""
+
+    def run() -> dict[str, Any]:
+        client = _client()
+        path = f"/downloads/{client.resolve(download_id)}/verify"
+        result: dict[str, Any] = client.call("POST", path, json={"checksum": checksum})
+        return result
+
+    result = _guarded(run)
+    if result["ok"]:
+        console.print(f"[green]ok[/green] {result['algo']} {result['actual']}", highlight=False)
+        return
+    console.print(f"[red]mismatch[/red] {result['algo']}", highlight=False)
+    console.print(
+        f"  expected {result['expected']}\n  actual   {result['actual']}", highlight=False
+    )
+    raise typer.Exit(code=1)
 
 
 @app.command()
@@ -276,6 +412,129 @@ def config(
         raise _fail(ClientError(f"no setting named '{key}'"))
     for name in [key] if key else sorted(settings):
         console.print(f"{name} = {json.dumps(settings[name])}", highlight=False, markup=False)
+
+
+queue_app = typer.Typer(no_args_is_help=True, help="Start or stop the queue.")
+app.add_typer(queue_app, name="queue")
+
+
+def _print_queue(state: dict[str, Any]) -> None:
+    console.print("running" if state["running"] else "stopped", highlight=False)
+    if state["post_action_pending"]:
+        console.print("a post action is counting down: `sayl queue cancel` stops it")
+    elif state["post_action_armed"]:
+        console.print("a post action runs when the queue is empty")
+
+
+@queue_app.command("status")
+def queue_status() -> None:
+    """Show whether the queue runs, and any post action."""
+    _print_queue(_guarded(lambda: _client().call("GET", "/queue")))
+
+
+@queue_app.command("start")
+def queue_start() -> None:
+    """Start queued downloads, and resume the ones `sayl queue stop` paused."""
+    _print_queue(_guarded(lambda: _client().call("POST", "/queue/start")))
+
+
+@queue_app.command("stop")
+def queue_stop() -> None:
+    """Start nothing new and pause running downloads. Captured streams keep going."""
+    _print_queue(_guarded(lambda: _client().call("POST", "/queue/stop")))
+
+
+@queue_app.command("cancel")
+def queue_cancel() -> None:
+    """Cancel a shutdown, suspend, or command before it runs."""
+    _print_queue(_guarded(lambda: _client().call("POST", "/queue/post-action/cancel")))
+
+
+schedule_app = typer.Typer(no_args_is_help=True, help="Cron schedules for the queue.")
+app.add_typer(schedule_app, name="schedule")
+
+
+@schedule_app.command("ls")
+def schedule_list(as_json: AsJson = False) -> None:
+    """List schedules and when each runs next."""
+    rows: list[dict[str, Any]] = _guarded(lambda: _client().call("GET", "/schedules"))
+    if as_json:
+        _print_json(rows)
+        return
+    table = Table("id", "name", "cron", "action", "after", "next run")
+    for row in rows:
+        action = row["action"]
+        if action == "speed_limit":
+            action += f" {size(row['params'].get('limit', 0))}/s"
+        table.add_row(
+            row["id"][:ID_LENGTH],
+            escape(row["name"]),
+            row["cron"],
+            action,
+            row["post_action"],
+            row["next_run"] or "disabled",
+        )
+    console.print(table)
+
+
+@schedule_app.command("add")
+def schedule_add(
+    name: str,
+    cron: Annotated[str, typer.Argument(help="Five crontab fields, such as '0 2 * * *'.")],
+    action: Annotated[str, typer.Argument(help="start_queue, stop_queue, or speed_limit.")],
+    limit: Annotated[int, typer.Option(help="For speed_limit: bytes per second, 0 = none.")] = 0,
+    after: Annotated[
+        str,
+        typer.Option(
+            help="For start_queue, once the queue is empty: shutdown, suspend, or command."
+        ),
+    ] = "none",
+    command: Annotated[
+        str, typer.Option(help="For --after command: the program and arguments.")
+    ] = "",
+) -> None:
+    """Add a schedule."""
+    params: dict[str, Any] = {}
+    if action == "speed_limit":
+        params["limit"] = limit
+    if command:
+        params["command"] = command
+    body = {"name": name, "cron": cron, "action": action, "params": params, "post_action": after}
+    row = _guarded(lambda: _client().call("POST", "/schedules", json=body))
+    console.print(f"added {row['id'][:ID_LENGTH]}, next run {row['next_run']}", highlight=False)
+
+
+def _schedule_id(client: Client, prefix: str) -> str:
+    matches = [r["id"] for r in client.call("GET", "/schedules") if r["id"].startswith(prefix)]
+    if len(matches) != 1:
+        raise ClientError(f"{len(matches)} schedules start with {prefix!r}")
+    return str(matches[0])
+
+
+@schedule_app.command("rm")
+def schedule_remove(schedule_id: str) -> None:
+    """Delete a schedule."""
+
+    def run() -> str:
+        client = _client()
+        full = _schedule_id(client, schedule_id)
+        client.call("DELETE", f"/schedules/{full}")
+        return full
+
+    console.print(f"removed {_guarded(run)[:ID_LENGTH]}", highlight=False)
+
+
+@schedule_app.command("run")
+def schedule_run(schedule_id: str) -> None:
+    """Do what a schedule does, now."""
+
+    def run() -> str:
+        client = _client()
+        full = _schedule_id(client, schedule_id)
+        client.call("POST", f"/schedules/{full}/run")
+        return full
+
+    console.print(f"ran {_guarded(run)[:ID_LENGTH]}", highlight=False)
 
 
 capture_app = typer.Typer(

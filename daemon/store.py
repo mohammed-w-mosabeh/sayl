@@ -3,9 +3,9 @@
 import asyncio
 import json
 from collections.abc import Callable, Sequence
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
-from sqlalchemy import Engine, delete
+from sqlalchemy import CursorResult, Engine, delete, update
 from sqlalchemy.orm.exc import StaleDataError
 from sqlmodel import Session, col, select
 
@@ -71,6 +71,19 @@ class Store:
                 return None  # Deleted between the read and the write.
             return row
 
+    def update_unless(self, download_id: str, statuses: Sequence[Status], **fields: Any) -> bool:
+        """Update only while the status is not one of statuses, in one statement, so a stale
+        progress snapshot cannot undo a finish that another task recorded meanwhile."""
+        query = (
+            update(Download)
+            .where(col(Download.id) == download_id, col(Download.status).not_in(statuses))
+            .values(**fields)
+        )
+        with Session(self.engine) as session:
+            result = cast(CursorResult[Any], session.execute(query))
+            session.commit()
+            return bool(result.rowcount)
+
     def delete_download(self, download_id: str) -> bool:
         with Session(self.engine) as session:
             session.execute(delete(Segment).where(col(Segment.download_id) == download_id))
@@ -133,6 +146,17 @@ class Store:
     def settings(self) -> dict[str, Any]:
         with Session(self.engine) as session:
             return {row.key: json.loads(row.value_json) for row in session.exec(select(Setting))}
+
+    def seed_categories(self, categories: list[Category]) -> None:
+        """Add the default categories once. A user who deletes them does not get them back."""
+        with Session(self.engine) as session:
+            seeded = session.get(Setting, "categories_seeded")
+            if seeded is not None:
+                return
+            if session.exec(select(Category)).first() is None:
+                session.add_all(categories)
+            session.add(Setting(key="categories_seeded", value_json="true"))
+            session.commit()
 
     def put_settings(self, values: dict[str, Any]) -> None:
         with Session(self.engine) as session:
