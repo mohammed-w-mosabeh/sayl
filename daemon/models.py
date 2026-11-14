@@ -111,6 +111,13 @@ class HostPolicy(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
+class Credential(SQLModel, table=True):
+    host: str = Field(primary_key=True)  # Lowercase host name, no port.
+    username: str
+    secret_enc: bytes  # The password, sealed by the Vault. Never returned or logged.
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
 class ScheduleAction(StrEnum):
     START_QUEUE = "start_queue"
     STOP_QUEUE = "stop_queue"

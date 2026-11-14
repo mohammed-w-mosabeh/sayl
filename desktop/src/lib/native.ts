@@ -17,6 +17,14 @@ export async function pickFolder(current: string): Promise<string | null> {
   return typeof chosen === "string" ? chosen : null;
 }
 
+/** A path from the save dialog, or null outside the desktop app or when cancelled. */
+export async function pickSavePath(defaultName: string): Promise<string | null> {
+  if (!inTauri()) return null;
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const chosen = await save({ defaultPath: defaultName, filters: [{ name: "JSON", extensions: ["json"] }] });
+  return typeof chosen === "string" ? chosen : null;
+}
+
 async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T | null> {
   if (!inTauri()) return null;
   const core = await import("@tauri-apps/api/core");

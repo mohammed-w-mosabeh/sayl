@@ -15,6 +15,8 @@ export type QueueState = Schemas["QueueOut"];
 export type Grab = Schemas["GrabOut"];
 export type GrabIn = Schemas["GrabIn"];
 export type BatchIn = Schemas["BatchIn"];
+export type Credential = Schemas["CredentialOut"];
+export type Stats = Schemas["StatsOut"];
 
 export type Api = ReturnType<typeof makeApi>;
 
@@ -109,5 +111,18 @@ export function makeApi(connection: Connection, fetcher: typeof fetch = globalTh
     cancelGrab: (grab: string) =>
       unwrap(client.DELETE("/grab-site/{grab_id}", { params: { path: { grab_id: grab } } })),
     browsers: () => unwrap(client.GET("/browsers")),
+    credentials: () => unwrap(client.GET("/credentials")),
+    putCredential: (host: string, username: string, password: string) =>
+      unwrap(
+        client.PUT("/credentials/{host}", { params: { path: { host } }, body: { username, password } }),
+      ),
+    removeCredential: (host: string) =>
+      unwrap(client.DELETE("/credentials/{host}", { params: { path: { host } } })),
+    exportHistory: () =>
+      unwrap(client.GET("/history/export")) as Promise<Record<string, unknown>>,
+    saveHistory: (path: string) => unwrap(client.POST("/history/save", { body: { path } })),
+    importHistory: (document: Record<string, unknown>) =>
+      unwrap(client.POST("/history/import", { body: document })),
+    stats: () => unwrap(client.GET("/stats")),
   };
 }

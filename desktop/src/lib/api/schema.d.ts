@@ -176,6 +176,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Credentials */
+        get: operations["list_credentials_credentials_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/credentials/{host}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Credential
+         * @description Store or replace the login for a host. The password can be set, never read.
+         */
+        put: operations["put_credential_credentials__host__put"];
+        post?: never;
+        /** Delete Credential */
+        delete: operations["delete_credential_credentials__host__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/downloads": {
         parameters: {
             query?: never;
@@ -362,6 +400,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/history/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export History
+         * @description Every download, without headers, cookies, or credentials.
+         */
+        get: operations["export_history_history_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/history/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import History
+         * @description Add the downloads of an export. Nothing starts; existing ids are skipped.
+         */
+        post: operations["import_history_history_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/history/save": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save History
+         * @description Write the export to a file the user chose in a save dialog: an absolute .json path
+         *     in an existing folder. The app's webview has no file access of its own.
+         */
+        post: operations["save_history_history_save_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/info": {
         parameters: {
             query?: never;
@@ -534,6 +633,23 @@ export interface paths {
         get: operations["get_settings_settings_get"];
         /** Put Settings */
         put: operations["put_settings_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Statistics */
+        get: operations["statistics_stats_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -803,6 +919,37 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** CategoryBytes */
+        CategoryBytes: {
+            /** Bytes */
+            bytes: number;
+            /** Category */
+            category: string;
+        };
+        /** CredentialIn */
+        CredentialIn: {
+            /** Password */
+            password: string;
+            /** Username */
+            username: string;
+        };
+        /**
+         * CredentialOut
+         * @description A stored login, without its password: that never leaves the daemon.
+         */
+        CredentialOut: {
+            /** Host */
+            host: string;
+            /** Username */
+            username: string;
+        };
+        /** DayBytes */
+        DayBytes: {
+            /** Bytes */
+            bytes: number;
+            /** Day */
+            day: string;
+        };
         /**
          * DownloadOut
          * @description A download as clients see it. Stored headers never leave the daemon.
@@ -955,6 +1102,25 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HistoryImportOut */
+        HistoryImportOut: {
+            /** Added */
+            added: number;
+            /** Skipped */
+            skipped: number;
+        };
+        /** HistorySave */
+        HistorySave: {
+            /** Path */
+            path: string;
+        };
+        /** HostBytes */
+        HostBytes: {
+            /** Bytes */
+            bytes: number;
+            /** Host */
+            host: string;
+        };
         /** InfoOut */
         InfoOut: {
             /** Clipboard */
@@ -1106,6 +1272,25 @@ export interface components {
                 [key: string]: unknown;
             };
             post_action: components["schemas"]["PostAction"];
+        };
+        /** StatsOut */
+        StatsOut: {
+            /** Average Speed */
+            average_speed: number;
+            /** By Category */
+            by_category: components["schemas"]["CategoryBytes"][];
+            /** By Status */
+            by_status: {
+                [key: string]: number;
+            };
+            /** Completed */
+            completed: number;
+            /** Completed Bytes */
+            completed_bytes: number;
+            /** Per Day */
+            per_day: components["schemas"]["DayBytes"][];
+            /** Top Hosts */
+            top_hosts: components["schemas"]["HostBytes"][];
         };
         /**
          * Status
@@ -1494,6 +1679,90 @@ export interface operations {
             header?: never;
             path: {
                 key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_credentials_credentials_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialOut"][];
+                };
+            };
+        };
+    };
+    put_credential_credentials__host__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_credential_credentials__host__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
             };
             cookie?: never;
         };
@@ -1965,6 +2234,94 @@ export interface operations {
             };
         };
     };
+    export_history_history_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    import_history_history_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryImportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_history_history_save_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HistorySave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     info_info_get: {
         parameters: {
             query?: never;
@@ -2299,6 +2656,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    statistics_stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatsOut"];
                 };
             };
         };

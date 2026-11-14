@@ -203,6 +203,9 @@ class YtDlpEngine(Engine):
         }
         if job.format_id:
             options["format"] = job.format_id
+        if job.username:
+            options["username"] = job.username
+            options["password"] = job.password
         rate = self._rate(job)
         if rate:
             options["ratelimit"] = rate

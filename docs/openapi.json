@@ -373,6 +373,82 @@
     "title": "Category",
     "type": "object"
    },
+   "CategoryBytes": {
+    "properties": {
+     "bytes": {
+      "title": "Bytes",
+      "type": "integer"
+     },
+     "category": {
+      "title": "Category",
+      "type": "string"
+     }
+    },
+    "required": [
+     "category",
+     "bytes"
+    ],
+    "title": "CategoryBytes",
+    "type": "object"
+   },
+   "CredentialIn": {
+    "properties": {
+     "password": {
+      "maxLength": 4096,
+      "title": "Password",
+      "type": "string"
+     },
+     "username": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Username",
+      "type": "string"
+     }
+    },
+    "required": [
+     "username",
+     "password"
+    ],
+    "title": "CredentialIn",
+    "type": "object"
+   },
+   "CredentialOut": {
+    "description": "A stored login, without its password: that never leaves the daemon.",
+    "properties": {
+     "host": {
+      "title": "Host",
+      "type": "string"
+     },
+     "username": {
+      "title": "Username",
+      "type": "string"
+     }
+    },
+    "required": [
+     "host",
+     "username"
+    ],
+    "title": "CredentialOut",
+    "type": "object"
+   },
+   "DayBytes": {
+    "properties": {
+     "bytes": {
+      "title": "Bytes",
+      "type": "integer"
+     },
+     "day": {
+      "title": "Day",
+      "type": "string"
+     }
+    },
+    "required": [
+     "day",
+     "bytes"
+    ],
+    "title": "DayBytes",
+    "type": "object"
+   },
    "DownloadOut": {
     "description": "A download as clients see it. Stored headers never leave the daemon.",
     "properties": {
@@ -719,6 +795,57 @@
      }
     },
     "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "HistoryImportOut": {
+    "properties": {
+     "added": {
+      "title": "Added",
+      "type": "integer"
+     },
+     "skipped": {
+      "title": "Skipped",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "added",
+     "skipped"
+    ],
+    "title": "HistoryImportOut",
+    "type": "object"
+   },
+   "HistorySave": {
+    "properties": {
+     "path": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Path",
+      "type": "string"
+     }
+    },
+    "required": [
+     "path"
+    ],
+    "title": "HistorySave",
+    "type": "object"
+   },
+   "HostBytes": {
+    "properties": {
+     "bytes": {
+      "title": "Bytes",
+      "type": "integer"
+     },
+     "host": {
+      "title": "Host",
+      "type": "string"
+     }
+    },
+    "required": [
+     "host",
+     "bytes"
+    ],
+    "title": "HostBytes",
     "type": "object"
    },
    "InfoOut": {
@@ -1085,6 +1212,61 @@
      "next_run"
     ],
     "title": "ScheduleOut",
+    "type": "object"
+   },
+   "StatsOut": {
+    "properties": {
+     "average_speed": {
+      "title": "Average Speed",
+      "type": "integer"
+     },
+     "by_category": {
+      "items": {
+       "$ref": "#/components/schemas/CategoryBytes"
+      },
+      "title": "By Category",
+      "type": "array"
+     },
+     "by_status": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "By Status",
+      "type": "object"
+     },
+     "completed": {
+      "title": "Completed",
+      "type": "integer"
+     },
+     "completed_bytes": {
+      "title": "Completed Bytes",
+      "type": "integer"
+     },
+     "per_day": {
+      "items": {
+       "$ref": "#/components/schemas/DayBytes"
+      },
+      "title": "Per Day",
+      "type": "array"
+     },
+     "top_hosts": {
+      "items": {
+       "$ref": "#/components/schemas/HostBytes"
+      },
+      "title": "Top Hosts",
+      "type": "array"
+     }
+    },
+    "required": [
+     "by_status",
+     "completed",
+     "completed_bytes",
+     "per_day",
+     "top_hosts",
+     "by_category",
+     "average_speed"
+    ],
+    "title": "StatsOut",
     "type": "object"
    },
    "Status": {
@@ -1656,6 +1838,123 @@
      }
     ],
     "summary": "Replace"
+   }
+  },
+  "/credentials": {
+   "get": {
+    "operationId": "list_credentials_credentials_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CredentialOut"
+         },
+         "title": "Response List Credentials Credentials Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List Credentials"
+   }
+  },
+  "/credentials/{host}": {
+   "delete": {
+    "operationId": "delete_credential_credentials__host__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "host",
+      "required": true,
+      "schema": {
+       "title": "Host",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Delete Credential"
+   },
+   "put": {
+    "description": "Store or replace the login for a host. The password can be set, never read.",
+    "operationId": "put_credential_credentials__host__put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "host",
+      "required": true,
+      "schema": {
+       "title": "Host",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CredentialIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CredentialOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Put Credential"
    }
   },
   "/downloads": {
@@ -2294,6 +2593,115 @@
     "summary": "Grab Status"
    }
   },
+  "/history/export": {
+   "get": {
+    "description": "Every download, without headers, cookies, or credentials.",
+    "operationId": "export_history_history_export_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Export History History Export Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Export History"
+   }
+  },
+  "/history/import": {
+   "post": {
+    "description": "Add the downloads of an export. Nothing starts; existing ids are skipped.",
+    "operationId": "import_history_history_import_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "additionalProperties": true,
+        "title": "Document",
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HistoryImportOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Import History"
+   }
+  },
+  "/history/save": {
+   "post": {
+    "description": "Write the export to a file the user chose in a save dialog: an absolute .json path\nin an existing folder. The app's webview has no file access of its own.",
+    "operationId": "save_history_history_save_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/HistorySave"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Save History"
+   }
+  },
   "/info": {
    "get": {
     "operationId": "info_info_get",
@@ -2716,6 +3124,29 @@
      }
     ],
     "summary": "Put Settings"
+   }
+  },
+  "/stats": {
+   "get": {
+    "operationId": "statistics_stats_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StatsOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Statistics"
    }
   }
  }

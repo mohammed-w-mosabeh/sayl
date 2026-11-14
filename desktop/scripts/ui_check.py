@@ -65,11 +65,12 @@ def serve(directory: Path, port: int) -> Server:
     return server
 
 
-def call(token: str, path: str, body: dict[str, Any] | None = None) -> Any:
+def call(token: str, path: str, body: dict[str, Any] | None = None, method: str = "") -> Any:
     request = urllib.request.Request(
         f"http://127.0.0.1:{DAEMON_PORT}{path}",
         json.dumps(body).encode() if body is not None else None,
         {"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method=method or None,
     )
     with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
         raw = response.read()
@@ -120,6 +121,7 @@ def seed(token: str) -> None:
         "/schedules",
         {"name": "Day", "cron": "0 8 * * *", "action": "speed_limit", "params": {"limit": 512_000}},
     )
+    call(token, "/credentials/files.example.com", {"username": "me", "password": "x"}, "PUT")
     call(
         token,
         "/capture/media",

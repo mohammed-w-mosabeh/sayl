@@ -8,13 +8,16 @@ import random
 import time
 import weakref
 from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from daemon import categories, checksum
 from daemon.config import Config
-from daemon.engines.aria2 import Aria2Engine
+from daemon.credentials import Credentials, host_of
+from daemon.engines.aria2 import Aria2Engine, local_torrent
 from daemon.engines.base import Engine, EngineError, Job, Progress, StreamInfo
 from daemon.engines.hybrid import NEEDS_REFRESH, NETWORK_LOST, HybridEngine
 from daemon.engines.ytdlp import YtDlpEngine
@@ -91,6 +94,7 @@ class QueueManager:
         self.post_action: Callable[[], Coroutine[Any, Any, None]] | None = None
         self.post_seen = False  # The armed queue has started something since it was armed.
         self.post_task: asyncio.Task[None] | None = None
+        self.credentials: Credentials | None = None  # Set by the daemon.
         # One apply() at a time per download; an entry lives while someone holds its lock.
         self.apply_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
             weakref.WeakValueDictionary()
@@ -194,7 +198,7 @@ class QueueManager:
     async def _start(self, row: Download) -> None:
         self.retry_at.pop(row.id, None)
         name = await run(route, row.url)
-        job = job_from(row, self.vault)
+        job = await self.job(row, name)
         try:
             reference = await self.engines[name].add(job)
         except (EngineError, OSError) as error:
@@ -210,6 +214,32 @@ class QueueManager:
             status=Status.ACTIVE,
             started_at=row.started_at or utcnow(),
         )
+
+    async def job(self, row: Download, engine: EngineName) -> Job:
+        """The row as a Job, with the stored login for its host. See "Site credentials"."""
+        job = job_from(row, self.vault)
+        if self.credentials is None or any(k.lower() == "authorization" for k in job.headers):
+            return job
+        login = self.credentials.for_url(job.url)
+        if login is None:
+            return job
+        if engine is EngineName.YTDLP:
+            return replace(job, username=login.username, password=login.password)
+        if not job.url.startswith(("http://", "https://")) or local_torrent(job.url) is not None:
+            return job  # Magnets, torrents, FTP: no HTTP authentication to send.
+        authorized = {**job.headers, "Authorization": login.basic()}
+        if engine is EngineName.ARIA2:
+            # aria2 resends headers on every redirect, so follow them here first: httpx drops
+            # Authorization when a redirect leaves the origin.
+            aria2 = self.engines[EngineName.ARIA2]
+            try:
+                final = (await aria2.probe(job.url, authorized)).url
+            except (EngineError, httpx.HTTPError, ValueError):
+                final = job.url
+            if host_of(final) != host_of(job.url):
+                return replace(job, url=final)
+            job = replace(job, url=final)
+        return replace(job, headers=authorized)
 
     async def poll(self) -> None:
         for download_id, name in list(self.active.items()):
@@ -360,7 +390,7 @@ class QueueManager:
         hybrid = self.engines[EngineName.HYBRID]
         self.active[row.id] = EngineName.HYBRID
         await run(self.store.update, row.id, status=Status.ACTIVE, started_at=utcnow())
-        job = job_from(row, self.vault)
+        job = await self.job(row, EngineName.HYBRID)
         await hybrid.attach(job, stream)
         await self.apply(row, await hybrid.status(row.id))
 
@@ -446,7 +476,7 @@ class QueueManager:
         hybrid = self.engines[EngineName.HYBRID]
         assert isinstance(hybrid, HybridEngine)  # noqa: S101 - wired in daemon.main
         segments = await run(self.store.segments, row.id)
-        job = job_from(row, self.vault)
+        job = await self.job(row, EngineName.HYBRID)
         await run(self.store.update, row.id, status=Status.ACTIVE, error="")
 
         async def resume() -> None:

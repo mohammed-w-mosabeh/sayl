@@ -1,9 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Play, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Download, Play, Plus, Trash2, Upload } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useApi } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -11,10 +11,11 @@ import { Switch } from "@/components/ui/switch";
 import type { Category, ScheduleIn } from "@/lib/api/client";
 import { inTauri } from "@/lib/api/connection";
 import { categoryName } from "@/lib/categories";
-import { SCHEDULES } from "@/lib/events";
+import { DOWNLOADS, SCHEDULES } from "@/lib/events";
 import { dateTime } from "@/lib/format";
+import { downloadJson, historyFileName, parseHistory } from "@/lib/history";
 import { languages, useI18n, type Key, type Language } from "@/lib/i18n";
-import { dropTargetVisible, setDropTarget } from "@/lib/native";
+import { dropTargetVisible, pickSavePath, setDropTarget } from "@/lib/native";
 import { useUi, type Theme } from "@/lib/prefs";
 import { cronFor, type Days } from "@/lib/schedules";
 
@@ -442,6 +443,167 @@ function OutboundProxy() {
   );
 }
 
+function SiteLogins() {
+  const { t } = useI18n();
+  const api = useApi();
+  const client = useQueryClient();
+  const logins = useQuery({ queryKey: ["credentials"], queryFn: api.credentials });
+  const [host, setHost] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const save = useMutation({
+    mutationFn: () => api.putCredential(host.trim(), username.trim(), password),
+    onSuccess: () => {
+      setHost("");
+      setUsername("");
+      setPassword("");
+      void client.invalidateQueries({ queryKey: ["credentials"] });
+    },
+  });
+  const remove = useMutation({
+    mutationFn: api.removeCredential,
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["credentials"] }),
+  });
+  return (
+    <Section title={t("settings.logins")} body={t("settings.logins.body")}>
+      {logins.data?.length ? (
+        <ul className="grid gap-1">
+          {logins.data.map((item) => (
+            <li key={item.host} className="flex items-center gap-3 text-sm">
+              <bdi dir="ltr" className="min-w-0 flex-1 truncate font-mono">
+                {item.host}
+              </bdi>
+              <bdi dir="ltr" className="truncate text-muted-foreground">
+                {item.username}
+              </bdi>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label={t("settings.logins.remove", { host: item.host })}
+                title={t("settings.logins.remove", { host: item.host })}
+                onClick={() => remove.mutate(item.host)}
+              >
+                <Trash2 />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t("settings.logins.none")}</p>
+      )}
+      <form
+        className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          save.mutate();
+        }}
+      >
+        <Field label={t("settings.logins.host")} htmlFor="login-host">
+          <Input
+            id="login-host"
+            dir="ltr"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="files.example.com"
+            value={host}
+            onChange={(event) => setHost(event.target.value)}
+          />
+        </Field>
+        <Field label={t("settings.logins.username")} htmlFor="login-user">
+          <Input
+            id="login-user"
+            dir="ltr"
+            autoComplete="off"
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+          />
+        </Field>
+        <Field label={t("settings.logins.password")} htmlFor="login-password">
+          <Input
+            id="login-password"
+            dir="ltr"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </Field>
+        <Button type="submit" disabled={!host.trim() || !username.trim() || save.isPending} className="mb-5">
+          <Plus />
+          {t("action.save")}
+        </Button>
+      </form>
+      {save.error ? <p className="text-sm text-danger">{save.error.message}</p> : null}
+    </Section>
+  );
+}
+
+function History() {
+  const { t } = useI18n();
+  const api = useApi();
+  const client = useQueryClient();
+  const input = useRef<HTMLInputElement>(null);
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const exporter = useMutation({
+    mutationFn: async () => {
+      const name = historyFileName(new Date());
+      if (!inTauri()) {
+        downloadJson(await api.exportHistory(), name);
+        return null;
+      }
+      const path = await pickSavePath(name);
+      if (path) await api.saveHistory(path);
+      return path;
+    },
+    onSuccess: (path) => {
+      if (path) setMessage({ text: t("settings.history.exported", { path }), error: false });
+    },
+    onError: (error) => setMessage({ text: error.message, error: true }),
+  });
+  const importer = useMutation({
+    mutationFn: async (file: File) => {
+      const document = parseHistory(await file.text());
+      if (!document) throw new Error(t("settings.history.bad_file"));
+      return api.importHistory(document);
+    },
+    onSuccess: (result) => {
+      setMessage({ text: t("settings.history.imported", { added: result.added, skipped: result.skipped }), error: false });
+      void client.invalidateQueries({ queryKey: DOWNLOADS });
+    },
+    onError: (error) => setMessage({ text: error.message, error: true }),
+  });
+  return (
+    <Section title={t("settings.history")} body={t("settings.history.body")}>
+      <div className="flex flex-wrap gap-2">
+        <Button disabled={exporter.isPending} onClick={() => exporter.mutate()}>
+          <Download />
+          {t("settings.history.export")}
+        </Button>
+        <Button disabled={importer.isPending} onClick={() => input.current?.click()}>
+          <Upload />
+          {t("settings.history.import")}
+        </Button>
+        <input
+          ref={input}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file) importer.mutate(file);
+          }}
+        />
+      </div>
+      {message ? (
+        <p className={message.error ? "text-sm text-danger" : "text-sm text-muted-foreground"} role="status">
+          {message.text}
+        </p>
+      ) : null}
+    </Section>
+  );
+}
+
 export function ignoreList(text: string): string[] {
   return [...new Set(text.split(/[\n,\u060C]+/).map((line) => line.trim().toLowerCase()).filter(Boolean))];
 }
@@ -595,6 +757,10 @@ export function SettingsView() {
           <Categories />
 
           <OutboundProxy />
+
+          <SiteLogins />
+
+          <History />
 
           {info.data ? (
             <Section title={t("settings.about")}>

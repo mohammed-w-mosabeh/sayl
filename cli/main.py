@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import quote
 
 import typer
 from rich.console import Console
@@ -15,6 +16,7 @@ from rich.table import Table
 from cli.client import Client, ClientError
 from cli.doctor import Status, has_failures, run_checks
 from daemon.batch import pattern_ranges
+from daemon.credentials import normalize_host
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 console = Console()
@@ -535,6 +537,102 @@ def schedule_run(schedule_id: str) -> None:
         return full
 
     console.print(f"ran {_guarded(run)[:ID_LENGTH]}", highlight=False)
+
+
+creds_app = typer.Typer(no_args_is_help=True, help="Logins for sites that need HTTP auth.")
+app.add_typer(creds_app, name="creds")
+
+
+@creds_app.command("ls")
+def creds_list(as_json: AsJson = False) -> None:
+    """List the hosts with a stored login. Passwords are never shown."""
+    rows: list[dict[str, Any]] = _guarded(lambda: _client().call("GET", "/credentials"))
+    if as_json:
+        _print_json(rows)
+        return
+    table = Table("host", "username")
+    for row in rows:
+        table.add_row(escape(row["host"]), escape(row["username"]))
+    console.print(table)
+
+
+@creds_app.command("set")
+def creds_set(
+    host: Annotated[str, typer.Argument(help="A host name, or a URL on that host.")],
+    username: str,
+    password_stdin: Annotated[
+        bool, typer.Option("--password-stdin", help="Read the password from standard input.")
+    ] = False,
+) -> None:
+    """Store the login for a host. The password is asked for, never taken as an argument."""
+    if password_stdin:
+        password = sys.stdin.readline().rstrip("\n")
+    else:
+        password = typer.prompt("Password", hide_input=True)
+    body = {"username": username, "password": password}
+    path = f"/credentials/{quote(normalize_host(host) or host, safe='')}"
+    row = _guarded(lambda: _client().call("PUT", path, json=body))
+    console.print(f"saved the login for {escape(row['host'])}", highlight=False)
+
+
+@creds_app.command("rm")
+def creds_remove(host: str) -> None:
+    """Delete the login for a host."""
+    path = f"/credentials/{quote(normalize_host(host) or host, safe='')}"
+    _guarded(lambda: _client().call("DELETE", path))
+    console.print(f"removed the login for {escape(host)}", highlight=False)
+
+
+history_app = typer.Typer(no_args_is_help=True, help="Export or import the download history.")
+app.add_typer(history_app, name="history")
+
+
+@history_app.command("export")
+def history_export(
+    file: Annotated[Path | None, typer.Argument(help="Write here instead of stdout.")] = None,
+) -> None:
+    """Export every download, without headers, cookies, or logins."""
+    document = _guarded(lambda: _client().call("GET", "/history/export"))
+    text = json.dumps(document, indent=1, ensure_ascii=False)
+    if file is None:
+        print(text)
+        return
+    file.write_text(text + "\n")
+    console.print(f"exported {len(document['downloads'])} downloads", highlight=False)
+
+
+@history_app.command("import")
+def history_import(file: Path) -> None:
+    """Add the downloads of an export. Nothing starts; known ids are skipped."""
+    try:
+        document = json.loads(file.read_text())
+    except (OSError, ValueError) as error:
+        raise _fail(ClientError(f"cannot read {file}: {error}")) from error
+    result = _guarded(lambda: _client().call("POST", "/history/import", json=document))
+    console.print(f"added {result['added']}, skipped {result['skipped']}", highlight=False)
+
+
+@app.command()
+def stats(as_json: AsJson = False) -> None:
+    """Totals, the last 30 days, and the busiest hosts."""
+    body: dict[str, Any] = _guarded(lambda: _client().call("GET", "/stats"))
+    if as_json:
+        _print_json(body)
+        return
+    counts = ", ".join(f"{name} {count}" for name, count in body["by_status"].items())
+    console.print(f"downloads: {counts or 'none'}", highlight=False)
+    console.print(
+        f"completed: {body['completed']} ({size(body['completed_bytes'])}), "
+        f"average {size(body['average_speed'])}/s",
+        highlight=False,
+    )
+    month = sum(day["bytes"] for day in body["per_day"])
+    console.print(f"last 30 days: {size(month)}", highlight=False)
+    if body["top_hosts"]:
+        table = Table("host", "downloaded")
+        for row in body["top_hosts"]:
+            table.add_row(escape(row["host"]), size(row["bytes"]))
+        console.print(table)
 
 
 capture_app = typer.Typer(

@@ -68,6 +68,11 @@ Claude Code updates these checkboxes at the end of each phase. Acceptance criter
 - [x] Site grabber, batch download, torrent/magnet, outbound proxy
 - [x] Acceptance: a scheduled queue starts and stops on time and runs the post action
 
+## Phase 6b — Feature list gaps
+- [x] Per-site credentials, sealed with the vault key
+- [x] History export and import
+- [x] Statistics
+
 ## Phase 7 — Packaging  (tag `v1.0.0`)
 - [ ] systemd user unit
 - [ ] AppImage + .deb

@@ -16,6 +16,7 @@ from daemon import categories
 from daemon.api import AddDownload, Services, create_app, create_download
 from daemon.capture.manager import CaptureManager
 from daemon.config import Config, Paths, ensure_token, load_config
+from daemon.credentials import Credentials
 from daemon.db import make_engine, migrate
 from daemon.engines.aria2 import Aria2Engine, Seeding
 from daemon.engines.base import Engine
@@ -124,6 +125,8 @@ async def build(paths: Paths, config: Config, env: Mapping[str, str] | None = No
         EngineName.HYBRID: hybrid,
     }
     queue = QueueManager(store, vault, engines, bus, config)
+    queue.credentials = Credentials(store, vault)
+    await queue.credentials.load()
     default_dir = await asyncio.to_thread(default_download_dir, config)
     queue.default_dir = default_dir
     services = Services(store, vault, queue, bus, config, engines, token, default_dir)

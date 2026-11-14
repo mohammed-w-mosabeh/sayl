@@ -3,6 +3,9 @@
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+- Site logins: a username and password per host, sealed with the vault key. Sayl sends a login only to its own host; aria2 downloads resolve redirects first so a password never reaches another host, and yt-dlp gets it as the site login. `GET /credentials`, `PUT|DELETE /credentials/{host}`, `sayl creds ls|set|rm` (the password is prompted for or read from stdin), and a Site logins section in settings.
+- History export and import: a versioned JSON file with no headers, cookies, or logins. Import skips known ids and never starts anything. `GET /history/export`, `POST /history/save`, `POST /history/import`, `sayl history export|import`, and buttons in settings.
+- Statistics: downloads by status, bytes per day for 30 days, busiest sites, categories, and average speed. `GET /stats`, `sayl stats`, and a Statistics page.
 - Fixed: a captured download could be reported as active after it had finished, when the queue's poll and the stream handler both saw the end. Progress is written only to unfinished rows, and each download's progress is recorded one update at a time.
 - Phase 6 scheduler: cron schedules start or stop the queue, or set the speed limit (five crontab fields, Sunday as 0 or 7, or six with seconds). Stopping the queue pauses what runs and starts nothing new; captured streams keep going. A start_queue schedule can shut down, suspend (through logind), or run a command once its queue is empty, after 60 s in which it can be cancelled; an empty queue never triggers it.
 - Auto categories: six defaults, matched by extension or MIME type when a download is added, captured, or (for a name only known at the end) completed. A category's folder applies unless the user chose one.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Globe, ListPlus, Plus, Search, Settings } from "lucide-react";
+import { BarChart3, Globe, ListPlus, Plus, Search, Settings } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AddDialog } from "@/components/add-dialog";
@@ -108,6 +108,11 @@ export function MainWindow() {
           <span className={cn("size-2 rounded-full", live ? "bg-success" : "animate-pulse bg-warning")} />
           <span className="sr-only">{live ? t("daemon.live") : t("daemon.reconnecting")}</span>
         </span>
+        <Button asChild size="icon" variant="ghost" aria-label={t("nav.stats")} title={t("nav.stats")}>
+          <Link href="/stats/">
+            <BarChart3 />
+          </Link>
+        </Button>
         <Button asChild size="icon" variant="ghost" aria-label={t("nav.settings")} title={t("nav.settings")}>
           <Link href="/settings/">
             <Settings />

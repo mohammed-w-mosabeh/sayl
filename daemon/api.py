@@ -6,7 +6,7 @@ import json
 import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import urlsplit
@@ -14,13 +14,14 @@ from urllib.parse import urlsplit
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from starlette.requests import ClientDisconnect
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from daemon import batch, categories, checksum, cookies
+from daemon import batch, categories, checksum, cookies, history, stats
 from daemon.capture.manager import CaptureManager
 from daemon.config import Config
+from daemon.credentials import Credentials
 from daemon.engines.base import Engine, EngineError, ProbeResult, StreamInfo
 from daemon.engines.hybrid import may_resume
 from daemon.events import EventBus
@@ -307,6 +308,52 @@ class CaptureOut(BaseModel):
     port: int
     system_proxy: bool
     ca: dict[str, Any] | None
+
+
+class CredentialIn(BaseModel):
+    username: str = Field(min_length=1, max_length=512)
+    password: str = Field(max_length=4096)
+
+
+class CredentialOut(BaseModel):
+    """A stored login, without its password: that never leaves the daemon."""
+
+    host: str
+    username: str
+
+
+class HistorySave(BaseModel):
+    path: str = Field(min_length=1, max_length=4096)
+
+
+class HistoryImportOut(BaseModel):
+    added: int
+    skipped: int
+
+
+class DayBytes(BaseModel):
+    day: str
+    bytes: int
+
+
+class HostBytes(BaseModel):
+    host: str
+    bytes: int
+
+
+class CategoryBytes(BaseModel):
+    category: str
+    bytes: int
+
+
+class StatsOut(BaseModel):
+    by_status: dict[str, int]
+    completed: int
+    completed_bytes: int
+    per_day: list[DayBytes]
+    top_hosts: list[HostBytes]
+    by_category: list[CategoryBytes]
+    average_speed: int
 
 
 class InfoOut(BaseModel):
@@ -857,6 +904,70 @@ def create_app(services: Services) -> FastAPI:
         """Cancel a shutdown, suspend, or command before it runs."""
         await scheduler().cancel_post_action()
         return queue_out()
+
+    def credentials() -> Credentials:
+        if queue.credentials is None:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "no credential store")
+        return queue.credentials
+
+    @app.get("/credentials", dependencies=auth)
+    async def list_credentials() -> list[CredentialOut]:
+        return [CredentialOut(host=h, username=u) for h, u in credentials().hosts()]
+
+    @app.put("/credentials/{host}", dependencies=auth)
+    async def put_credential(host: str, body: CredentialIn) -> CredentialOut:
+        """Store or replace the login for a host. The password can be set, never read."""
+        try:
+            key = await credentials().set(host, body.username, body.password)
+        except ValueError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+        return CredentialOut(host=key, username=body.username)
+
+    @app.delete("/credentials/{host}", dependencies=auth, status_code=204)
+    async def delete_credential(host: str) -> None:
+        if not await credentials().remove(host):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
+
+    @app.get("/history/export", dependencies=auth)
+    async def export_history() -> dict[str, Any]:
+        """Every download, without headers, cookies, or credentials."""
+        rows = await run(store.downloads)
+        return history.export(rows, await run(store.all, Category))
+
+    @app.post("/history/save", dependencies=auth, status_code=204)
+    async def save_history(body: HistorySave) -> None:
+        """Write the export to a file the user chose in a save dialog: an absolute .json path
+        in an existing folder. The app's webview has no file access of its own."""
+        target = Path(body.path)
+        if not target.is_absolute() or target.suffix.lower() != ".json":
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, "needs an absolute .json path"
+            )
+        document = history.export(await run(store.downloads), await run(store.all, Category))
+        text = json.dumps(document, indent=1, ensure_ascii=False) + "\n"
+        try:
+            await asyncio.to_thread(target.write_text, text)
+        except OSError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+
+    @app.post("/history/import", dependencies=auth)
+    async def import_history(document: dict[str, Any]) -> HistoryImportOut:
+        """Add the downloads of an export. Nothing starts; existing ids are skipped."""
+        try:
+            rows = history.parse(document, await run(store.all, Category))
+        except history.HistoryError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+        added = await run(store.import_downloads, rows)
+        if added:
+            services.bus.publish("history.imported", added=added)
+        return HistoryImportOut(added=added, skipped=len(rows) - added)
+
+    @app.get("/stats", dependencies=auth)
+    async def statistics() -> StatsOut:
+        rows = await run(store.downloads)
+        today = datetime.now(UTC).date()
+        result = stats.compute(rows, await run(store.all, Category), today)
+        return StatsOut.model_validate(result)
 
     @app.websocket("/ws")
     async def events(socket: WebSocket) -> None:

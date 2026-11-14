@@ -43,6 +43,8 @@ class Job:
     playlist_items: str = ""
     cookies_file: str = ""
     cookies_from_browser: str = ""
+    username: str = ""  # A site login for yt-dlp, from the stored credentials.
+    password: str = ""
 
 
 @dataclass(frozen=True)

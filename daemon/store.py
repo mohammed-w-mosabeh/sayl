@@ -12,6 +12,7 @@ from sqlmodel import Session, col, select
 from daemon.engines.hybrid import SegmentState
 from daemon.models import (
     Category,
+    Credential,
     Download,
     HostPolicy,
     PolicyReason,
@@ -83,6 +84,20 @@ class Store:
             result = cast(CursorResult[Any], session.execute(query))
             session.commit()
             return bool(result.rowcount)
+
+    def import_downloads(self, rows: Sequence[Download]) -> int:
+        """Insert rows whose id is new, in one transaction. Returns how many were added."""
+        with Session(self.engine) as session:
+            existing = set(session.exec(select(Download.id)))
+            added = 0
+            for row in rows:
+                if row.id in existing:
+                    continue
+                existing.add(row.id)
+                session.add(row)
+                added += 1
+            session.commit()
+            return added
 
     def delete_download(self, download_id: str) -> bool:
         with Session(self.engine) as session:
@@ -172,12 +187,12 @@ class Store:
         with Session(self.engine) as session:
             return session.get(model, key)
 
-    def put(self, row: Category | Schedule) -> None:
+    def put(self, row: Category | Schedule | Credential) -> None:
         with Session(self.engine) as session:
             session.merge(row)
             session.commit()
 
-    def remove(self, model: type[Category] | type[Schedule], key: str) -> bool:
+    def remove(self, model: type[Category] | type[Schedule] | type[Credential], key: str) -> bool:
         with Session(self.engine) as session:
             row = session.get(model, key)
             if row is not None:

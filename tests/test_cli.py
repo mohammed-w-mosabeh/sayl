@@ -310,3 +310,34 @@ def test_grab_lists_then_queues_a_sites_files(sayld: Sayld) -> None:
     output = sayl("grab", sayld.origin.url("/site/"), "--queue", "--dest", str(sayld.out / "grab"))
     assert "2 files on 1 pages (done)" in output
     assert "added 2 downloads" in output
+
+
+def test_creds_take_the_password_from_stdin_and_never_print_it(sayld: Sayld) -> None:
+    result = runner.invoke(
+        app, ["creds", "set", "https://Files.Example/x", "me", "--password-stdin"], input="pw1\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert "files.example" in result.output
+    listed = sayl("creds", "ls")
+    assert "files.example" in listed and "me" in listed and "pw1" not in listed
+    prompted = runner.invoke(app, ["creds", "set", "b.example", "you"], input="pw2\n")
+    assert prompted.exit_code == 0 and "pw2" not in prompted.output
+    assert {row["host"] for row in as_json("creds", "ls")} == {"files.example", "b.example"}
+    sayl("creds", "rm", "files.example")
+    sayl("creds", "rm", "files.example", code=1)
+    sayl("creds", "rm", "b.example")
+
+
+def test_history_export_import_and_stats(sayld: Sayld, tmp_path: Path) -> None:
+    add(sayld, "/normal.bin")
+    exported = tmp_path / "history.json"
+    assert "exported" in sayl("history", "export", str(exported))
+    document = json.loads(exported.read_text())
+    assert document["format"] == "sayl-history" and document["downloads"]
+    assert "skipped" in sayl("history", "import", str(exported))  # Same ids: all skipped.
+    assert json.loads(sayl("history", "export"))["format"] == "sayl-history"
+    broken = tmp_path / "broken.json"
+    broken.write_text("{")
+    assert "cannot read" in sayl("history", "import", str(broken), code=1)
+    assert "last 30 days" in sayl("stats")
+    assert len(as_json("stats")["per_day"]) == 30

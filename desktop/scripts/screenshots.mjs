@@ -13,6 +13,7 @@ const RUNS = [
 const ENGINE = { en: "aria2 (segmented)", ar: "aria2 (مقسّم)" };
 const NAME_HEADER = { en: "Name", ar: "الاسم" };
 const BAR_QUALITY = "1080p";
+const STATS_DONE = { en: "Completed", ar: "المكتملة" };
 
 const browser = await chromium.launch({ executablePath: process.env.CHROME });
 const runs = [];
@@ -73,7 +74,14 @@ for (const run of RUNS) {
       await page.screenshot({ path: `${out}/settings-schedules-${run.name}.png` });
       await page.locator("#proxy-url").scrollIntoViewIfNeeded();
       await page.screenshot({ path: `${out}/settings-proxy-${run.name}.png` });
+      await page.locator("#login-host").scrollIntoViewIfNeeded();
+      await page.getByText("files.example.com", { exact: true }).waitFor({ timeout: 10000 });
+      await page.screenshot({ path: `${out}/settings-logins-${run.name}.png` });
     }
+    await page.goto(`${url}stats/`);
+    await page.getByText(STATS_DONE[run.language], { exact: true }).first().waitFor({ timeout: 15000 });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `${out}/stats-${run.name}.png` });
     const bar = await context.newPage();
     bar.on("pageerror", (error) => problems.push(`bar: ${error.message}`));
     await bar.setViewportSize({ width: 480, height: 64 });

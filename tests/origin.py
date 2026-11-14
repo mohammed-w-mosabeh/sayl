@@ -1,6 +1,7 @@
 """A real HTTP origin for engine tests. It counts every request, like the capture lab origin."""
 
 import asyncio
+import base64
 import hashlib
 from collections import Counter
 from collections.abc import AsyncIterator
@@ -16,6 +17,8 @@ SHA256 = hashlib.sha256(BODY).hexdigest()
 ETAG = '"lab-v1"'
 TRICKLE = 64 * 1024
 TOKEN = "k9Xq2vLw7Rt4Zp1Bn6Ys"  # noqa: S105 - a fake path token
+LOGIN = ("lab-user", "lab-pass")
+BASIC = "Basic " + base64.b64encode(":".join(LOGIN).encode()).decode()
 
 
 @dataclass
@@ -24,6 +27,7 @@ class Origin:
     ranges: Counter[str] = field(default_factory=Counter)
     cookies: list[str] = field(default_factory=list)
     range_log: list[str] = field(default_factory=list)
+    auth_log: list[tuple[str, str, str]] = field(default_factory=list)  # host, path, header
     down: bool = False  # Every Range connection drops with no answer, as with no network.
     server: asyncio.Server | None = None
     port: int = 0
@@ -55,6 +59,23 @@ class Origin:
                     self.ranges[path] += 1
                     self.range_log.append(wanted)
                 self.cookies.append(headers.get("cookie", ""))
+                authorization = headers.get("authorization", "")
+                self.auth_log.append((headers.get("host", ""), path, authorization))
+                if path.startswith("/auth/") and authorization != BASIC:
+                    writer.write(
+                        b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=lab\r\n"
+                        b"Content-Length: 0\r\n\r\n"
+                    )
+                    await writer.drain()
+                    continue
+                if path.startswith("/away/"):  # To the same server under another host name.
+                    target = f"http://localhost:{self.port}/{path.removeprefix('/away/')}"
+                    writer.write(
+                        f"HTTP/1.1 302 Found\r\nLocation: {target}\r\n"
+                        "Content-Length: 0\r\n\r\n".encode()
+                    )
+                    await writer.drain()
+                    continue
                 await self._respond(writer, path, wanted, head_only=method == "HEAD")
                 await writer.drain()
         except (asyncio.IncompleteReadError, ConnectionError):
