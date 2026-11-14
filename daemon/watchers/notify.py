@@ -10,11 +10,12 @@ import html
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import AsyncExitStack
-from dataclasses import dataclass
 
 from jeepney import DBusAddress, MatchRule, message_bus, new_method_call
 from jeepney.io.asyncio import DBusRouter, Proxy, open_dbus_router
 from jeepney.low_level import HeaderFields, Message, MessageType
+
+from daemon.i18n import t
 
 log = logging.getLogger(__name__)
 
@@ -28,23 +29,6 @@ DOWNLOAD = "download"
 IGNORE = "ignore_site"
 
 Action = Callable[[str, str], Awaitable[None]]
-
-
-@dataclass(frozen=True)
-class Texts:
-    summary: str
-    download: str
-    ignore: str
-
-
-TEXTS = {
-    "en": Texts("Download this link?", "Download", "Ignore this site"),
-    "ar": Texts("أتريد تنزيل هذا الرابط؟", "تنزيل", "تجاهل هذا الموقع"),
-}
-
-
-def texts(language: object) -> Texts:
-    return TEXTS.get(str(language), TEXTS["en"])
 
 
 def shorten(link: str) -> str:
@@ -89,9 +73,21 @@ class Notifier:
         self.router = None
 
     async def offer(self, link: str, language: object = "en") -> None:
+        number = await self._send(
+            t(language, "clipboard.summary"),
+            html.escape(shorten(link)),  # Servers may read the body as markup.
+            [DOWNLOAD, t(language, "clipboard.download"), IGNORE, t(language, "clipboard.ignore")],
+        )
+        if number is not None:
+            self.pending[number] = link
+
+    async def inform(self, summary: str, body: str) -> None:
+        """A notification with no buttons."""
+        await self._send(summary, html.escape(body), [])
+
+    async def _send(self, summary: str, body: str, actions: list[str]) -> int | None:
         if self.router is None:
-            return
-        words = texts(language)
+            return None
         message = new_method_call(
             SERVER,
             "Notify",
@@ -100,9 +96,9 @@ class Notifier:
                 "Sayl",
                 0,
                 "folder-download",
-                words.summary,
-                html.escape(shorten(link)),  # Servers may read the body as markup.
-                [DOWNLOAD, words.download, IGNORE, words.ignore],
+                summary,
+                body,
+                actions,
                 {"urgency": ("y", 1), "category": ("s", "transfer")},
                 TIMEOUT_MS,
             ),
@@ -111,11 +107,11 @@ class Notifier:
             reply = await asyncio.wait_for(self.router.send_and_get_reply(message), 5)
         except (TimeoutError, OSError) as error:
             log.warning("notification failed: %s", error)
-            return
+            return None
         if reply.header.message_type is MessageType.error:
             log.warning("no notification server: %s", reply.header.fields)
-            return
-        self.pending[int(reply.body[0])] = link
+            return None
+        return int(reply.body[0])
 
     async def _listen(self, signals: "asyncio.Queue[Message]") -> None:
         while True:

@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from daemon.events import EventBus
+from daemon.i18n import language_of
 from daemon.store import Store, run
 from daemon.watchers.base import Watcher, WatcherUnavailable
 from daemon.watchers.filter import ClipFilter, host_of
@@ -82,8 +83,7 @@ class ClipboardService:
     async def apply(self, settings: Mapping[str, Any]) -> None:
         """Follow the settings: start or stop watching, and reload the ignore list."""
         self.filter.patterns = patterns(settings.get(IGNORE_LIST, []))
-        ui = settings.get("ui")
-        self.language = ui.get("language", "en") if isinstance(ui, dict) else "en"
+        self.language = language_of(settings)
         enabled = settings.get(ENABLED, True) is not False
         if enabled and (self.task is None or self.task.done()):
             self.task = asyncio.create_task(self._watch())

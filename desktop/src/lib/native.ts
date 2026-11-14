@@ -40,6 +40,15 @@ export async function setTrayLabels(labels: { show: string; drop: string; quit: 
   await invoke("set_tray_labels", { labels });
 }
 
+/** Create the video bar's window, hidden, so it can look at the latest media reports. */
+export async function openVideoBar(): Promise<void> {
+  await invoke("open_video_bar");
+}
+
+export async function setVideoBar(visible: boolean): Promise<void> {
+  await invoke("set_video_bar", { visible });
+}
+
 export async function showMainWindow(): Promise<void> {
   await invoke("show_main_window");
 }

@@ -112,7 +112,7 @@ function Categories() {
       api.addCategory({
         name: draft.name.trim(),
         extensions: draft.extensions
-          .split(/[\s,،]+/)
+          .split(/[\s,\u060C]+/)
           .map((item) => item.replace(/^\./, "").toLowerCase())
           .filter(Boolean)
           .join(","),
@@ -192,7 +192,7 @@ function Categories() {
 }
 
 export function ignoreList(text: string): string[] {
-  return [...new Set(text.split(/[\n,،]+/).map((line) => line.trim().toLowerCase()).filter(Boolean))];
+  return [...new Set(text.split(/[\n,\u060C]+/).map((line) => line.trim().toLowerCase()).filter(Boolean))];
 }
 
 function Clipboard() {
@@ -329,6 +329,11 @@ export function SettingsView() {
               onChange={(notifications) => setPrefs({ notifications })}
             />
             <DropTargetToggle />
+            <Toggle
+              label={t("settings.video_bar")}
+              checked={prefs.videoBar}
+              onChange={(videoBar) => setPrefs({ videoBar })}
+            />
             <HostPolicy />
           </Section>
 

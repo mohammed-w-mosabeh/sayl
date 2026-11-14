@@ -1,0 +1,44 @@
+name: real-sites
+
+# Acceptance runs against real sites over a fast link. They download hundreds of MB, so they run on
+# demand (and when this file changes), never on every pull request.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/real-sites.yml
+
+permissions:
+  contents: read
+
+jobs:
+  google-drive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install --yes aria2
+      - run: uv sync --locked
+      - name: Install Chromium
+        run: |
+          npm install --no-save --prefix "$RUNNER_TEMP/playwright" playwright-core@1.63.0
+          "$RUNNER_TEMP/playwright/node_modules/.bin/playwright-core" install --with-deps chromium
+          echo "PLAYWRIGHT_CORE=$RUNNER_TEMP/playwright/node_modules/playwright-core" >> "$GITHUB_ENV"
+      # Phase 5 acceptance: a 1.3 GB file behind the virus-scan page, at 400 KB/s (about 55 min).
+      - run: >-
+          uv run python poc/lab/real_capture.py steps-drive.json --min-bytes 400000000
+          --magic 504b0304 --limit 400000 --timeout 9000 --state "$RUNNER_TEMP/drive"
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: drive-logs
+          path: |
+            ${{ runner.temp }}/drive/daemon.log
+            ${{ runner.temp }}/drive/driver.log
+          retention-days: 7

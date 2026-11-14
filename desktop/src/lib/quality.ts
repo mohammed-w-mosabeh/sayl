@@ -26,7 +26,8 @@ export interface Quality {
   format: string;
 }
 
-const hasVideo = (format: Format) => !!format.vcodec && format.vcodec !== "none";
+/** yt-dlp leaves vcodec unset when a manifest omits CODECS; a height still means video. */
+const hasVideo = (format: Format) => format.vcodec !== "none" && (!!format.vcodec || !!format.height);
 const hasAudio = (format: Format) => !!format.acodec && format.acodec !== "none";
 const sizeOf = (format: Format) => format.filesize ?? format.filesize_approx ?? null;
 

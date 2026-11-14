@@ -12,7 +12,7 @@ from pathlib import Path
 from daemon.config import Config
 from daemon.engines.aria2 import Aria2Engine
 from daemon.engines.base import Engine, EngineError, Job, Progress, StreamInfo
-from daemon.engines.hybrid import NEEDS_REFRESH, HybridEngine
+from daemon.engines.hybrid import NEEDS_REFRESH, NETWORK_LOST, HybridEngine
 from daemon.engines.ytdlp import YtDlpEngine
 from daemon.events import EventBus
 from daemon.models import Download, EngineName, Status, utcnow
@@ -231,6 +231,10 @@ class QueueManager:
 
     async def resume(self, row: Download) -> None:
         if row.engine is EngineName.HYBRID and row.id not in self.active:
+            if row.status is Status.NEEDS_REFRESH and row.error == NETWORK_LOST:
+                # Range requests from the segment map, under the same policy as crash recovery.
+                await self._continue_captured(row, respect_policy=True)
+                return
             raise EngineError(NEEDS_REFRESH)  # Queueing it would request the URL again.
         if row.id in self.active:
             await self.engines[row.engine].resume(row.engine_ref)

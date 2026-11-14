@@ -1,7 +1,8 @@
 """Render the built desktop UI against a real sayld, in English and Arabic, and save screenshots.
 
 Checks that the WebSocket connects, the document direction follows the language, the add
-dialog probes a link, and the console stays clean. No internet: files come from a local server.
+dialog probes a link, the video bar lists an HLS stream's qualities, and the console stays
+clean. No internet: files come from a local server.
 
 Usage:
   cd desktop && pnpm build && cd ..
@@ -34,6 +35,18 @@ FILES = {
     "تقرير-سنوي.pdf": 80_000_000,
     "archive.tar.gz": 20_000_000,
 }
+MASTER = """#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080
+1080.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720
+720.m3u8
+"""
+MEDIA = """#EXTM3U
+#EXT-X-TARGETDURATION:10
+#EXTINF:10,
+segment.ts
+#EXT-X-ENDLIST
+"""
 
 
 class Quiet(SimpleHTTPRequestHandler):
@@ -59,7 +72,8 @@ def call(token: str, path: str, body: dict[str, Any] | None = None) -> Any:
         {"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
     )
     with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
-        return json.load(response)
+        raw = response.read()
+    return json.loads(raw) if raw else None
 
 
 def wait_for_token(file: Path) -> str:
@@ -91,6 +105,11 @@ def seed(token: str) -> None:
         "/downloads",
         {"url": f"{base}/ubuntu-24.04-desktop-amd64.iso", "speed_limit": 2_000_000},
     )
+    call(
+        token,
+        "/capture/media",
+        {"kind": "manifest", "page_url": f"{base}/watch", "url": f"{base}/stream.m3u8"},
+    )
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
         states = {row["status"] for row in call(token, "/downloads")}
@@ -116,6 +135,9 @@ def main() -> int:
     for name, size in FILES.items():
         with (files / name).open("wb") as stream:
             stream.truncate(size)
+    (files / "stream.m3u8").write_text(MASTER)
+    for height in (1080, 720):
+        (files / f"{height}.m3u8").write_text(MEDIA)
     config = state / "config" / "sayl"
     config.mkdir(parents=True)
     (config / "config.toml").write_text(

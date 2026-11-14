@@ -17,10 +17,17 @@ export interface Prefs {
   language: Language;
   theme: Theme;
   notifications: boolean;
+  /** Offer videos sayl-capture sees in a floating bar. */
+  videoBar: boolean;
 }
 
 const KEY = "sayl.prefs";
-export const DEFAULT_PREFS: Prefs = { language: "en", theme: "system", notifications: true };
+export const DEFAULT_PREFS: Prefs = {
+  language: "en",
+  theme: "system",
+  notifications: true,
+  videoBar: true,
+};
 
 /**
  * Appearance is cached here so the first frame is already in the right language and theme.
@@ -53,6 +60,7 @@ export function normalizePrefs(value: unknown): Prefs {
     language: source.language === "ar" ? "ar" : "en",
     theme: source.theme === "light" || source.theme === "dark" ? source.theme : "system",
     notifications: source.notifications !== false,
+    videoBar: source.videoBar !== false,
   };
 }
 

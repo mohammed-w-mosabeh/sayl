@@ -35,8 +35,8 @@ BUS_CONFIG = """<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Config
 
 
 def unavailable(reason: str) -> None:
-    """Skip locally; CI sets SAYL_REQUIRE_DISPLAYS so a missing server fails instead."""
-    if os.environ.get("SAYL_REQUIRE_DISPLAYS"):
+    """Skip locally; CI sets SAYL_REQUIRE_TOOLS so a missing tool fails instead."""
+    if os.environ.get("SAYL_REQUIRE_TOOLS"):
         pytest.fail(reason)
     pytest.skip(reason)
 

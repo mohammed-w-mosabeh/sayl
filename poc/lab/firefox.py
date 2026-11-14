@@ -25,6 +25,8 @@ user_pref("network.proxy.ssl", "127.0.0.1");
 user_pref("network.proxy.ssl_port", {proxy});
 user_pref("network.proxy.allow_hijacking_localhost", true);
 user_pref("network.proxy.no_proxies_on", "");
+user_pref("network.http.phishy-userpass-length", 255);
+user_pref("network.auth.confirmAuth.enabled", false);
 user_pref("browser.download.folderList", 2);
 user_pref("browser.download.dir", "{downloads}");
 user_pref("browser.download.useDownloadDir", true);
@@ -111,7 +113,11 @@ def _step(driver: Marionette, step: dict[str, Any]) -> None:
     started = time.monotonic()
     note = ""
     try:
-        if "goto" in step:
+        if "goto" in step and step.get("download"):
+            # Navigate answers only once a page loads, and a captured download never loads one.
+            script = "window.location.href = arguments[0];"
+            driver.call("WebDriver:ExecuteScript", {"script": script, "args": [step["goto"]]})
+        elif "goto" in step:
             driver.call("WebDriver:Navigate", {"url": step["goto"]})
             note = f"title={driver.call('WebDriver:GetTitle')!r}"
         elif "click" in step:

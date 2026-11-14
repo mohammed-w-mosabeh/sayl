@@ -5,9 +5,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { DaemonScreen } from "@/components/daemon-screen";
 import { ApiError, makeApi, type Api, type Download } from "@/lib/api/client";
 import { loadConnection, type Connection, type ConnectionResult } from "@/lib/api/connection";
-import { DOWNLOADS, NOTIFY, useDaemonEvents, type DaemonEvent } from "@/lib/events";
+import { DOWNLOADS, isMediaReport, NOTIFY, useDaemonEvents, type DaemonEvent } from "@/lib/events";
 import { I18nProvider, useI18n } from "@/lib/i18n";
-import { notify, setTrayLabels } from "@/lib/native";
+import { notify, openVideoBar, setTrayLabels } from "@/lib/native";
 import { normalizePrefs, useUi, type Theme } from "@/lib/prefs";
 
 interface ApiContextValue {
@@ -79,6 +79,7 @@ function Live({ primary, children }: { primary: boolean; children: ReactNode }) 
   const client = useQueryClient();
   const i18n = useI18n();
   const notifications = useUi((state) => state.prefs.notifications);
+  const videoBar = useUi((state) => state.prefs.videoBar);
   usePrefsSync(value.api, primary);
 
   useEffect(() => {
@@ -92,13 +93,18 @@ function Live({ primary, children }: { primary: boolean; children: ReactNode }) 
 
   const onEvent = useCallback(
     (event: DaemonEvent) => {
+      if (isMediaReport(event)) {
+        // The bar's own window decides whether to show: it may be dismissed or protected.
+        if (primary && videoBar) void openVideoBar().catch(() => undefined);
+        return;
+      }
       const title = NOTIFY[event.event];
       if (!primary || !notifications || !title) return;
       const row = client.getQueryData<Download[]>(DOWNLOADS)?.find((item) => item.id === event.id);
       const name = row?.filename || (typeof event.filename === "string" ? event.filename : "");
       void notify(i18n.t(title), name).catch(() => undefined);
     },
-    [client, i18n, notifications, primary],
+    [client, i18n, notifications, primary, videoBar],
   );
   useDaemonEvents(value.connection, onEvent);
   return children;

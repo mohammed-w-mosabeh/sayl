@@ -8,6 +8,7 @@ import pytest
 
 from daemon.engines.base import EngineError, Job, StreamInfo
 from daemon.engines.hybrid import (
+    NETWORK_LOST,
     HybridEngine,
     SegmentState,
     may_accelerate,
@@ -169,6 +170,7 @@ async def test_cancel_stops_a_stream_and_removes_the_partial(tmp_path: Path) -> 
 
 
 async def test_pause_holds_the_stream_without_closing_it(tmp_path: Path) -> None:
+    """A link that could resume by Range waits under back-pressure: nothing is read ahead."""
     engine = HybridEngine(MemoryStore())
     pulled = 0
     gate = asyncio.Event()
@@ -180,7 +182,8 @@ async def test_pause_holds_the_stream_without_closing_it(tmp_path: Path) -> None
             yield b"x"
             await gate.wait()
 
-    job = Job("d", "http://x/f", str(tmp_path), "f")
+    info = StreamInfo(total=3, accept_ranges=True, etag='"v1"')
+    job = Job("d", "http://x/f", str(tmp_path), "f", stream=info)
     task = asyncio.create_task(engine.attach(job, body()))
     await asyncio.sleep(0.05)
     await engine.pause("d")
@@ -191,6 +194,91 @@ async def test_pause_holds_the_stream_without_closing_it(tmp_path: Path) -> None
     await engine.resume("d")
     await asyncio.wait_for(task, 5)
     assert (tmp_path / "f").read_bytes() == b"xxx"
+    await engine.client.aclose()
+
+
+def endless(started: asyncio.Event, size: int = 1024) -> AsyncIterator[bytes]:
+    async def body() -> AsyncIterator[bytes]:
+        while True:
+            yield b"x" * size
+            started.set()
+            await asyncio.sleep(0)
+
+    return body()
+
+
+async def paused_capture(
+    tmp_path: Path, engine: HybridEngine, info: StreamInfo
+) -> tuple[asyncio.Task[str], asyncio.Event]:
+    started = asyncio.Event()
+    job = Job("d", "http://x/f", str(tmp_path), "f", stream=info)
+    task = asyncio.create_task(engine.attach(job, endless(started)))
+    await started.wait()
+    await engine.pause("d")
+    return task, started
+
+
+async def test_paused_single_use_stream_spools_up_to_the_limit(tmp_path: Path) -> None:
+    store = MemoryStore()
+    engine = HybridEngine(store, spool_max=8 * 1024)
+    task, _ = await paused_capture(tmp_path, engine, StreamInfo())
+    await asyncio.wait_for(task, 5)
+    status = await engine.status("d")
+    assert status.status is Status.NEEDS_REFRESH
+    assert status.error == "link expired, refresh it"
+    written = (tmp_path / ".d.part").stat().st_size
+    assert 8 * 1024 <= written <= 8 * 1024 + 2048  # The bound counts from the pause.
+    assert sum(s.done for s in store.saved["d"]) == written  # Every spooled byte is kept.
+    await engine.client.aclose()
+
+
+async def test_paused_stream_without_free_space_waits_for_a_new_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("daemon.engines.hybrid.free_bytes", lambda path: 4096)
+    store = MemoryStore()
+    engine = HybridEngine(store, spool_max=1024 * 1024)
+    task, _ = await paused_capture(tmp_path, engine, StreamInfo())
+    await asyncio.wait_for(task, 5)
+    assert (await engine.status("d")).status is Status.NEEDS_REFRESH
+    written = (tmp_path / ".d.part").stat().st_size
+    assert written > 0
+    assert sum(s.done for s in store.saved["d"]) == written
+    await engine.client.aclose()
+
+
+async def test_free_space_check_needs_only_the_remaining_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("daemon.engines.hybrid.free_bytes", lambda path: 4096)
+    engine = HybridEngine(MemoryStore(), spool_max=1024 * 1024)
+    gate = asyncio.Event()
+
+    async def body() -> AsyncIterator[bytes]:
+        yield b"a" * 1024
+        await gate.wait()
+        yield b"b" * 1024
+
+    job = Job("d", "http://x/f", str(tmp_path), "f", stream=StreamInfo(total=2048))
+    task = asyncio.create_task(engine.attach(job, body()))
+    await asyncio.sleep(0.05)
+    await engine.pause("d")
+    gate.set()
+    await asyncio.wait_for(task, 5)
+    assert (tmp_path / "f").read_bytes() == b"a" * 1024 + b"b" * 1024
+    await engine.client.aclose()
+
+
+async def test_resume_after_a_spool_keeps_the_stream_running(tmp_path: Path) -> None:
+    engine = HybridEngine(MemoryStore(), spool_max=1024 * 1024 * 1024)
+    task, _ = await paused_capture(tmp_path, engine, StreamInfo())
+    await asyncio.sleep(0.01)
+    await engine.resume("d")
+    await asyncio.sleep(0.05)
+    assert not task.done()
+    assert (await engine.status("d")).status is Status.ACTIVE
+    await engine.cancel("d")
+    await asyncio.wait_for(task, 5)
     await engine.client.aclose()
 
 
@@ -238,6 +326,79 @@ async def lose_stream(
     job = Job("d", origin.url(path), str(tmp_path), "f", stream=info)
     await engine.attach(job, cut_stream())
     return engine, job
+
+
+async def test_a_dropped_range_connection_is_retried_not_abandoned(
+    tmp_path: Path, origin: Origin
+) -> None:
+    store = MemoryStore()
+    engine = HybridEngine(store, connections=2, min_bytes=1024, retry_delay=0.01)
+    url = origin.url("/flaky/f.bin")
+    info, stream = await open_stream(url)
+    await engine.attach(
+        Job(id="d1", url=url, dest_dir=str(tmp_path), filename="f", stream=info), stream
+    )
+    await engine.client.aclose()
+    assert sha(tmp_path / "f") == SHA256
+    assert origin.ranges["/flaky/f.bin"] == 2  # Dropped once, resumed once.
+    assert not store.blocked
+
+
+async def test_a_long_outage_is_retried_past_the_old_five_attempts(
+    tmp_path: Path, origin: Origin
+) -> None:
+    engine = HybridEngine(MemoryStore(), connections=2, min_bytes=1024, retry_delay=0.001)
+    url = origin.url("/outage/8/f.bin")
+    info, stream = await open_stream(url)
+    await engine.attach(Job("d1", url, str(tmp_path), "f", stream=info), stream)
+    await engine.client.aclose()
+    assert sha(tmp_path / "f") == SHA256
+    assert origin.ranges["/outage/8/f.bin"] == 9
+
+
+async def test_losing_the_network_keeps_every_range_byte(tmp_path: Path, origin: Origin) -> None:
+    """The Drive failure: one Range connection gave up and the finished ones were dropped."""
+    store = MemoryStore()
+    engine = HybridEngine(
+        store, connections=3, min_bytes=1024, retry_delay=0.01, range_retry_seconds=0.2
+    )
+
+    async def flowing() -> AsyncIterator[bytes]:
+        await asyncio.sleep(0.05)  # Acceleration plans from offset 0.
+        for start in range(0, SIZE, 65536):
+            yield BODY[start : start + 65536]
+
+    job = Job("d", origin.url("/tailonly/f.bin"), str(tmp_path), "f", stream=info_for())
+    await asyncio.wait_for(engine.attach(job, flowing()), 10)
+    boundary, ((tail_start, _), (middle_start, _)) = plan_segments(0, SIZE, 3)
+    status = await engine.status("d")
+    assert (status.status, status.error) == (Status.NEEDS_REFRESH, NETWORK_LOST)
+    assert status.done == SIZE - (tail_start - middle_start)  # Only the middle is missing.
+    assert not store.blocked
+
+    job.url = origin.url("/normal.bin")  # The network is back.
+    await engine.continue_download(job, store.saved["d"])
+    await engine.client.aclose()
+    assert sha(tmp_path / "f") == SHA256
+    assert origin.range_log[-1] == f"bytes={middle_start}-{tail_start - 1}"
+    assert origin.ranges["/normal.bin"] == 1
+    assert boundary == middle_start
+
+
+async def test_a_silent_stream_is_treated_as_lost_and_resumed(
+    tmp_path: Path, origin: Origin
+) -> None:
+    async def hung() -> AsyncIterator[bytes]:
+        yield BODY[:CUT]
+        await asyncio.Event().wait()  # The socket died without a reset.
+        yield b""
+
+    engine = HybridEngine(MemoryStore(), connections=1, stall_seconds=0.2)
+    job = Job("d", origin.url("/normal.bin"), str(tmp_path), "f", stream=info_for())
+    await asyncio.wait_for(engine.attach(job, hung()), 10)
+    await engine.client.aclose()
+    assert sha(tmp_path / "f") == SHA256
+    assert origin.ranges["/normal.bin"] == 1
 
 
 async def test_lost_stream_resumes_missing_bytes_with_range(tmp_path: Path, origin: Origin) -> None:
@@ -360,3 +521,8 @@ def test_the_hint_skips_acceleration_but_one_connection_also_does() -> None:
     assert not may_accelerate(info, f"http://a/{TOKEN}/f.bin", 10, 4)
     assert not may_accelerate(info, "http://a/f.bin?sig=1", 10, 4)
     assert not may_accelerate(info, "http://a/f.bin", 10, 1)
+
+
+def test_the_desktop_app_matches_the_network_lost_text() -> None:
+    status_ts = Path(__file__).parents[1] / "desktop/src/lib/status.ts"
+    assert f'NETWORK_LOST = "{NETWORK_LOST}"' in status_ts.read_text()

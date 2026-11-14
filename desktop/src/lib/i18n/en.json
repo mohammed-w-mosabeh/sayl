@@ -1,4 +1,5 @@
 {
+  "language.name": "English",
   "app.name": "Sayl",
   "app.tagline": "Download manager",
   "nav.downloads": "Downloads",
@@ -171,5 +172,9 @@
   "drop.rejected": "Not a link",
   "tray.show": "Show Sayl",
   "tray.drop_target": "Floating drop target",
-  "tray.quit": "Quit Sayl"
+  "tray.quit": "Quit Sayl",
+  "settings.video_bar": "Offer videos I play in a floating bar",
+  "bar.reading": "Reading the available qualities…",
+  "bar.download": "Download",
+  "bar.dismiss": "Not this one"
 }

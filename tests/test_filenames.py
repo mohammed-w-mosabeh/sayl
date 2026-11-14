@@ -22,9 +22,9 @@ def test_sanitize(raw: str, safe: str) -> None:
 
 
 def test_sanitize_caps_bytes_without_splitting_characters() -> None:
-    result = sanitize("ع" * 200)
+    result = sanitize("\u0639" * 200)  # Two bytes each in UTF-8
     assert len(result.encode()) <= 255
-    assert result.endswith("ع")
+    assert result.endswith("\u0639")
 
 
 def test_unique_path_never_overwrites(tmp_path: Path) -> None:

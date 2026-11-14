@@ -51,7 +51,7 @@ The real GNOME measurement saved the clipboard first (text only), copied three t
 | Vitest | 44 passed |
 | `ui_check.py` (en, ar, ar-dark) | Pass |
 
-Tests never touch the real desktop. `conftest.py` removes `DISPLAY`, `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE`, and `DBUS_SESSION_BUS_ADDRESS`, so the daemon under test has no clipboard and no notifications. Tests that need them start Xvfb, headless sway, or a private `dbus-daemon` with no service activation, so no real notification daemon starts. In CI, `SAYL_REQUIRE_DISPLAYS=1` turns a missing display server into a failure instead of a skip. `ui_check.py` also hides these variables from its daemon now.
+Tests never touch the real desktop. `conftest.py` removes `DISPLAY`, `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE`, and `DBUS_SESSION_BUS_ADDRESS`, so the daemon under test has no clipboard and no notifications. Tests that need them start Xvfb, headless sway, or a private `dbus-daemon` with no service activation, so no real notification daemon starts. In CI, `SAYL_REQUIRE_TOOLS=1` turns a missing display server into a failure instead of a skip. `ui_check.py` also hides these variables from its daemon now.
 
 Testing found three defects, all fixed:
 

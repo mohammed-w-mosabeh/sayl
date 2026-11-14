@@ -8,6 +8,7 @@ import pytest
 
 from daemon.db import make_engine, migrate
 from daemon.events import EventBus
+from daemon.i18n import t
 from daemon.models import Download
 from daemon.store import Store
 from daemon.watchers.base import Watcher, WatcherUnavailable, text_type
@@ -385,9 +386,14 @@ async def test_notifier_offers_and_reports_the_pressed_button() -> None:
         await notifier.offer("https://a.example/<b>", "ar")
         await asyncio.wait_for(server.received.wait(), 5)
         number, body, _ = server.calls[0]
-        assert body[3] == "أتريد تنزيل هذا الرابط؟"
+        assert body[3] == t("ar", "clipboard.summary")
         assert body[4] == "https://a.example/&lt;b&gt;"
-        assert body[5] == ["download", "تنزيل", "ignore_site", "تجاهل هذا الموقع"]
+        assert body[5] == [
+            "download",
+            t("ar", "clipboard.download"),
+            "ignore_site",
+            t("ar", "clipboard.ignore"),
+        ]
 
         await server.press(number, "default")  # Clicking the body does nothing.
         await server.press(number, "download")
@@ -444,3 +450,14 @@ async def test_acceptance_copied_link_downloads_from_the_notification(tmp_path: 
             await clipboard.stop()
         await server.stop()
     await origin.stop()
+
+
+def test_daemon_catalogs_match() -> None:
+    from daemon.i18n import catalog, language_of, t
+
+    assert catalog("ar").keys() == catalog("en").keys()
+    assert t("ar", "clipboard.download") == catalog("ar")["clipboard.download"] != "Download"
+    assert t("xx", "clipboard.download") == "Download"
+    assert t("en", "capture.bypass.summary", host="a.test") == "Sayl stopped intercepting a.test"
+    assert language_of({"ui": {"language": "ar"}}) == "ar"
+    assert language_of({"ui": "nonsense"}) == "en"

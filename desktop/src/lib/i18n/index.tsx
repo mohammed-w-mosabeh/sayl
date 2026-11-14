@@ -9,7 +9,8 @@ export type Language = "en" | "ar";
 export type Vars = Record<string, string | number>;
 
 export const catalogs: Record<Language, Record<Key, string>> = { en, ar };
-export const languages: Record<Language, string> = { en: "English", ar: "العربية" };
+/** Each language is listed under its own name. */
+export const languages: Record<Language, string> = { en: en["language.name"], ar: ar["language.name"] };
 
 export function direction(language: Language): "ltr" | "rtl" {
   return language === "ar" ? "rtl" : "ltr";

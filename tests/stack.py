@@ -1,6 +1,7 @@
 """A real sayld on a real socket, in this event loop. Only the origin is a test double."""
 
 import asyncio
+import os
 import socket
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -34,9 +35,11 @@ class Stack:
 async def running_stack(root: Path, **overrides: object) -> AsyncIterator[Stack]:
     paths = Paths.from_env({"HOME": str(root)})
     values = {"connections": 4, "accelerate_min_bytes": 1024, "download_dir": str(root / "out")}
-    daemon = await build(paths, Config(**{**values, **overrides}))  # type: ignore[arg-type]
-    await daemon.start()
     port = free_port()
+    values["port"], values["capture_port"] = port, free_port()  # Children dial config.port.
+    env = {**os.environ, "HOME": str(root)}  # Children and trust stores see only the test home.
+    daemon = await build(paths, Config(**{**values, **overrides}), env)  # type: ignore[arg-type]
+    await daemon.start()
     server = uvicorn.Server(
         uvicorn.Config(
             create_app(daemon.services),

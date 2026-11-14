@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bytes, dateTime, duration, eta, isDownloadUrl, percent, speed } from "./format";
 import { makeI18n } from "./i18n";
+import arabic from "./i18n/ar.json";
 
 const en = makeI18n("en");
 const ar = makeI18n("ar");
@@ -15,8 +16,8 @@ describe("bytes", () => {
   });
 
   it("keeps Latin digits in Arabic", () => {
-    expect(bytes(ar, 1536)).toBe("1.5 ك.بايت");
-    expect(speed(ar, 2 * 1024 ** 2)).toBe("2.0 م.بايت/ث");
+    expect(bytes(ar, 1536)).toBe(`1.5 ${arabic["units.KB"]}`);
+    expect(speed(ar, 2 * 1024 ** 2)).toBe(arabic["units.per_second"].replace("{size}", `2.0 ${arabic["units.MB"]}`));
   });
 });
 

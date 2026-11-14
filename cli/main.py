@@ -278,6 +278,104 @@ def config(
         console.print(f"{name} = {json.dumps(settings[name])}", highlight=False, markup=False)
 
 
+capture_app = typer.Typer(
+    no_args_is_help=True, help="Capture browser downloads through the local proxy."
+)
+app.add_typer(capture_app, name="capture")
+PROMPT_TIMEOUT = 180  # pkexec waits for a person to type a password.
+
+
+def _print_capture(status: dict[str, Any]) -> None:
+    style = {"running": "green", "failed": "red"}.get(status["state"], "yellow")
+    console.print(f"state         [{style}]{status['state']}[/{style}]")
+    console.print(f"proxy         127.0.0.1:{status['port']}", highlight=False)
+    console.print(f"system proxy  {'on' if status['system_proxy'] else 'off'}")
+    authority = status["ca"]
+    if authority is None:
+        console.print("CA            not created yet")
+    else:
+        stores = ", ".join(sorted({item["store"] for item in authority["stores"]})) or "none"
+        console.print(f"CA            {escape(authority['name'])}", highlight=False)
+        console.print(f"fingerprint   {authority['fingerprint']}", highlight=False)
+        console.print(f"trusted by    {stores}{', system' if authority['system'] else ''}")
+    if status["error"]:
+        console.print(f"[yellow]{escape(status['error'])}[/yellow]")
+
+
+def _print_report(report: dict[str, Any]) -> None:
+    table = Table("Store", "Target", "Result", "Detail")
+    for step in report["steps"]:
+        outcome = step["outcome"]
+        style = "red" if outcome == "failed" else "green"
+        table.add_row(
+            step["store"], step["target"], f"[{style}]{outcome}[/{style}]", escape(step["detail"])
+        )
+    console.print(table)
+    if not report["ok"]:
+        raise typer.Exit(code=1)
+
+
+@capture_app.command("status")
+def capture_status(as_json: AsJson = False) -> None:
+    """Show whether capture runs, the system proxy, and where the CA is trusted."""
+    status: dict[str, Any] = _guarded(lambda: _client().call("GET", "/capture"))
+    if as_json:
+        _print_json(status)
+        return
+    _print_capture(status)
+
+
+@capture_app.command("enable")
+def capture_enable(
+    system_proxy: Annotated[
+        bool, typer.Option(help="Point the desktop's proxy setting at Sayl.")
+    ] = True,
+) -> None:
+    """Start the capture proxy. The previous proxy settings are saved first."""
+    status: dict[str, Any] = _guarded(
+        lambda: _client().call(
+            "PUT", "/capture", json={"enabled": True, "system_proxy": system_proxy}
+        )
+    )
+    _print_capture(status)
+    if status["state"] != "running":
+        raise typer.Exit(code=1)
+    if status["ca"] and not status["ca"]["stores"] and not status["ca"]["system"]:
+        console.print(
+            "[yellow]No browser trusts the Sayl CA yet. Run: sayl capture install-ca[/yellow]"
+        )
+
+
+@capture_app.command("disable")
+def capture_disable() -> None:
+    """Stop the capture proxy and restore the previous proxy settings."""
+    _print_capture(_guarded(lambda: _client().call("PUT", "/capture", json={"enabled": False})))
+
+
+@capture_app.command("install-ca")
+def capture_install_ca(
+    system: Annotated[
+        bool, typer.Option(help="Also add it to the system store (asks for a password).")
+    ] = True,
+) -> None:
+    """Create this machine's CA if needed, and trust it in Chrome, Firefox, and the system."""
+    report: dict[str, Any] = _guarded(
+        lambda: _client().call(
+            "POST", "/capture/ca", json={"system": system}, timeout=PROMPT_TIMEOUT
+        )
+    )
+    _print_report(report)
+
+
+@capture_app.command("uninstall")
+def capture_uninstall() -> None:
+    """Restore the proxy settings, stop capturing, and remove the CA from every store."""
+    report: dict[str, Any] = _guarded(
+        lambda: _client().call("POST", "/capture/uninstall", timeout=PROMPT_TIMEOUT)
+    )
+    _print_report(report)
+
+
 @app.command()
 def doctor() -> None:
     """Check aria2c, ffmpeg, the JS runtime, capture tools, and the session type."""

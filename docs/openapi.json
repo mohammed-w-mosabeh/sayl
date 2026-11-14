@@ -155,6 +155,94 @@
     "title": "AttachDownload",
     "type": "object"
    },
+   "BypassReport": {
+    "properties": {
+     "host": {
+      "title": "Host",
+      "type": "string"
+     },
+     "reason": {
+      "default": "tls",
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "host"
+    ],
+    "title": "BypassReport",
+    "type": "object"
+   },
+   "CaInstall": {
+    "properties": {
+     "system": {
+      "default": true,
+      "title": "System",
+      "type": "boolean"
+     }
+    },
+    "title": "CaInstall",
+    "type": "object"
+   },
+   "CaptureOut": {
+    "properties": {
+     "ca": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ca"
+     },
+     "error": {
+      "title": "Error",
+      "type": "string"
+     },
+     "port": {
+      "title": "Port",
+      "type": "integer"
+     },
+     "state": {
+      "title": "State",
+      "type": "string"
+     },
+     "system_proxy": {
+      "title": "System Proxy",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "state",
+     "error",
+     "port",
+     "system_proxy",
+     "ca"
+    ],
+    "title": "CaptureOut",
+    "type": "object"
+   },
+   "CaptureUpdate": {
+    "properties": {
+     "enabled": {
+      "title": "Enabled",
+      "type": "boolean"
+     },
+     "system_proxy": {
+      "default": false,
+      "title": "System Proxy",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "enabled"
+    ],
+    "title": "CaptureUpdate",
+    "type": "object"
+   },
    "Category": {
     "properties": {
      "dest_dir": {
@@ -436,6 +524,39 @@
     "title": "InfoOut",
     "type": "object"
    },
+   "MediaReport": {
+    "properties": {
+     "drm": {
+      "default": false,
+      "title": "Drm",
+      "type": "boolean"
+     },
+     "extractor": {
+      "default": "",
+      "title": "Extractor",
+      "type": "string"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "page_url": {
+      "title": "Page Url",
+      "type": "string"
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     }
+    },
+    "required": [
+     "kind",
+     "page_url",
+     "url"
+    ],
+    "title": "MediaReport",
+    "type": "object"
+   },
    "PatchDownload": {
     "properties": {
      "filename": {
@@ -709,6 +830,241 @@
  },
  "openapi": "3.1.0",
  "paths": {
+  "/capture": {
+   "get": {
+    "operationId": "capture_status_capture_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CaptureOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Capture Status"
+   },
+   "put": {
+    "description": "Start or stop sayl-capture, and point the system proxy at it if asked.",
+    "operationId": "capture_update_capture_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CaptureUpdate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CaptureOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Capture Update"
+   }
+  },
+  "/capture/bypass": {
+   "post": {
+    "operationId": "capture_bypass_capture_bypass_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BypassReport"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Capture Bypass"
+   }
+  },
+  "/capture/ca": {
+   "post": {
+    "description": "Create the CA if needed and trust it. The system store asks for a password.",
+    "operationId": "capture_install_ca_capture_ca_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CaInstall"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Capture Install Ca Capture Ca Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Capture Install Ca"
+   }
+  },
+  "/capture/media": {
+   "get": {
+    "operationId": "capture_media_capture_media_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "title": "Response Capture Media Capture Media Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Capture Media"
+   },
+   "post": {
+    "operationId": "capture_report_media_capture_media_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MediaReport"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Capture Report Media"
+   }
+  },
+  "/capture/uninstall": {
+   "post": {
+    "description": "Restore the proxy settings, stop capturing, remove the CA from every store.",
+    "operationId": "capture_uninstall_capture_uninstall_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Capture Uninstall Capture Uninstall Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Capture Uninstall"
+   }
+  },
   "/categories": {
    "get": {
     "operationId": "list/categories",

@@ -17,6 +17,14 @@ describe("qualities", () => {
     expect(options[0]?.format).toBe("");
   });
 
+  it("counts HLS variants without CODECS as video", () => {
+    const hls: Format[] = [
+      { format_id: "hls-720", height: 720, tbr: 2500 },
+      { format_id: "hls-1080", height: 1080, tbr: 5000 },
+    ];
+    expect(qualities(hls).map((option) => option.height)).toEqual([null, 1080, 720]);
+  });
+
   it("adds the best audio to a video-only size, but not to a muxed one", () => {
     const [, hd, sd] = qualities(formats);
     expect(hd?.size).toBe(90_000 + 4_000);

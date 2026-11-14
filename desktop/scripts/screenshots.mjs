@@ -12,6 +12,7 @@ const RUNS = [
 ];
 const ENGINE = { en: "aria2 (segmented)", ar: "aria2 (مقسّم)" };
 const NAME_HEADER = { en: "Name", ar: "الاسم" };
+const BAR_QUALITY = "1080p";
 
 const browser = await chromium.launch({ executablePath: process.env.CHROME });
 const runs = [];
@@ -54,6 +55,12 @@ for (const run of RUNS) {
       await page.locator("#clip-ignore").scrollIntoViewIfNeeded();
       await page.screenshot({ path: `${out}/settings-clipboard-${run.name}.png` });
     }
+    const bar = await context.newPage();
+    bar.on("pageerror", (error) => problems.push(`bar: ${error.message}`));
+    await bar.setViewportSize({ width: 480, height: 64 });
+    await bar.goto(`${url}grabber/`);
+    await bar.locator("select option", { hasText: BAR_QUALITY }).waitFor({ state: "attached", timeout: 30000 });
+    await bar.screenshot({ path: `${out}/bar-${run.name}.png` });
   } catch (error) {
     problems.push(String(error).split("\n")[0]);
   }

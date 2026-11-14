@@ -4,7 +4,7 @@ import asyncio
 import os
 import signal
 import subprocess
-from collections.abc import Generator
+from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +12,7 @@ from pathlib import Path
 import uvicorn
 
 from daemon.api import AddDownload, Services, create_app, create_download
+from daemon.capture.manager import CaptureManager
 from daemon.config import Config, Paths, ensure_token, load_config
 from daemon.db import make_engine, migrate
 from daemon.engines.aria2 import Aria2Engine
@@ -25,6 +26,8 @@ from daemon.queue import QueueManager
 from daemon.store import Store
 from daemon.vault import Vault, load_key
 from daemon.watchers.service import ClipboardService
+
+SHUTDOWN_GRACE_SECONDS = 5
 
 
 class _Server(uvicorn.Server):
@@ -61,8 +64,12 @@ class Daemon:
         await self.services.queue.start()
         if self.services.clipboard is not None:
             await self.services.clipboard.start()
+        if self.services.capture is not None:
+            await self.services.capture.start()
 
     async def stop(self) -> None:
+        if self.services.capture is not None:
+            await self.services.capture.stop()  # First: it restores the system proxy.
         if self.services.clipboard is not None:
             await self.services.clipboard.stop()
         await self.services.queue.stop()
@@ -70,7 +77,9 @@ class Daemon:
         await self.hybrid.client.aclose()
 
 
-async def build(paths: Paths, config: Config) -> Daemon:
+async def build(paths: Paths, config: Config, env: Mapping[str, str] | None = None) -> Daemon:
+    """`env` is the environment sayld runs in, passed on to its watchers and children."""
+    environment = dict(os.environ if env is None else env)
     paths.create()
     token = await asyncio.to_thread(ensure_token, paths)
     await asyncio.to_thread(migrate, paths.database)
@@ -79,7 +88,10 @@ async def build(paths: Paths, config: Config) -> Daemon:
     vault = Vault(key)
     bus = EventBus()
     hybrid = HybridEngine(
-        store, connections=config.connections, min_bytes=config.accelerate_min_bytes
+        store,
+        connections=config.connections,
+        min_bytes=config.accelerate_min_bytes,
+        spool_max=config.capture_spool_max_bytes,
     )
     aria2 = Aria2Engine(paths.data)
     engines: dict[EngineName, Engine] = {
@@ -94,7 +106,8 @@ async def build(paths: Paths, config: Config) -> Daemon:
     async def add(link: str) -> None:
         await create_download(services, AddDownload(url=link))
 
-    services.clipboard = ClipboardService(store, bus, add, os.environ)
+    services.clipboard = ClipboardService(store, bus, add, environment)
+    services.capture = CaptureManager(paths, config, store, bus, environment)
     return Daemon(services, aria2, hybrid)
 
 
@@ -114,6 +127,9 @@ async def run(stop: asyncio.Event, paths: Paths | None = None) -> int:
             log_config=None,
             access_log=False,
             lifespan="off",
+            # A captured download's PUT /stream lasts as long as its body. Past this, uvicorn
+            # cancels it, and HybridEngine keeps the partial file for crash recovery.
+            timeout_graceful_shutdown=SHUTDOWN_GRACE_SECONDS,
         )
     )
     serving = asyncio.create_task(server.serve())

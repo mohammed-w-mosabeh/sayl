@@ -1,6 +1,7 @@
 //! The Sayl desktop shell. It holds no download state: sayld owns that, and the webview talks
 //! to it directly over HTTP and WebSocket on 127.0.0.1. Rust only provides what a webview
-//! cannot: the token on disk, the tray, the floating drop target, and opening folders.
+//! cannot: the token on disk, the tray, the floating drop target and video bar, and opening
+//! folders.
 
 mod connection;
 
@@ -16,6 +17,10 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 const MAIN: &str = "main";
 const DROP: &str = "drop";
 const DROP_SIZE: f64 = 112.0;
+const BAR: &str = "grabber";
+const BAR_WIDTH: f64 = 480.0;
+const BAR_HEIGHT: f64 = 64.0;
+const BAR_TOP: f64 = 48.0;
 
 struct Tray {
     show: MenuItem<Wry>,
@@ -79,6 +84,32 @@ fn drop_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .build()
 }
 
+/// The floating video bar. It starts hidden; its page shows it once a video is worth offering.
+fn bar_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    if let Some(window) = app.get_webview_window(BAR) {
+        return Ok(window);
+    }
+    let window = WebviewWindowBuilder::new(app, BAR, WebviewUrl::App("grabber/".into()))
+        .title("Sayl")
+        .inner_size(BAR_WIDTH, BAR_HEIGHT)
+        .resizable(false)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(false)
+        .visible(false)
+        .build()?;
+    // Top centre, out of the way of video controls. Wayland compositors place it themselves.
+    if let Ok(Some(monitor)) = window.primary_monitor() {
+        let scale = monitor.scale_factor();
+        let width = f64::from(monitor.size().width) / scale;
+        let x = ((width - BAR_WIDTH) / 2.0).max(0.0);
+        let _ = window.set_position(tauri::LogicalPosition::new(x, BAR_TOP));
+    }
+    Ok(window)
+}
+
 fn apply_drop_target(app: &AppHandle, visible: bool) -> tauri::Result<()> {
     let window = drop_window(app)?;
     if visible {
@@ -113,6 +144,24 @@ fn drop_target_visible(app: AppHandle) -> bool {
     app.get_webview_window(DROP)
         .and_then(|window| window.is_visible().ok())
         .unwrap_or(false)
+}
+
+#[tauri::command]
+fn open_video_bar(app: AppHandle) -> Result<(), String> {
+    bar_window(&app)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_video_bar(app: AppHandle, visible: bool) -> Result<(), String> {
+    let window = bar_window(&app).map_err(|error| error.to_string())?;
+    let result = if visible {
+        window.show()
+    } else {
+        window.hide()
+    };
+    result.map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -208,6 +257,8 @@ pub fn run() {
             set_drop_target,
             drop_target_visible,
             show_main_window,
+            open_video_bar,
+            set_video_bar,
             set_tray_labels,
             open_folder
         ])

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_ACCELERATE_MIN_BYTES = 20 * 1024 * 1024
+DEFAULT_SPOOL_MAX_BYTES = 512 * 1024 * 1024
 LOOPBACK_ORIGIN = re.compile(r"http://(127\.0\.0\.1|localhost):\d{1,5}")
 
 
@@ -53,12 +54,14 @@ class Paths:
 class Config:
     host: str = "127.0.0.1"
     port: int = 6971
+    capture_port: int = 6972
     download_dir: str = ""
     max_concurrent: int = 3
     max_retries: int = 5
     speed_limit: int = 0
     connections: int = 16
     accelerate_min_bytes: int = DEFAULT_ACCELERATE_MIN_BYTES
+    capture_spool_max_bytes: int = DEFAULT_SPOOL_MAX_BYTES
     # Extra origins allowed to call the API, for `pnpm tauri dev` only. Loopback HTTP only.
     dev_origins: tuple[str, ...] = ()
 

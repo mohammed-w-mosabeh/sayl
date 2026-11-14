@@ -32,6 +32,7 @@ describe("translate", () => {
   it("Arabic is right to left, English left to right", () => {
     expect(direction("ar")).toBe("rtl");
     expect(direction("en")).toBe("ltr");
-    expect(makeI18n("ar").t("action.add")).toBe("إضافة");
+    expect(makeI18n("ar").t("action.add")).toBe(ar["action.add"]);
+    expect(makeI18n("ar").t("action.add")).not.toBe(en["action.add"]);
   });
 });

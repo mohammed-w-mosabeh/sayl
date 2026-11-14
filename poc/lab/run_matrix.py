@@ -1,8 +1,9 @@
 """Run the single-use lab matrix for one browser and protocol, and check what the origin saw.
 
 Usage: uv run python poc/lab/run_matrix.py <chromium|firefox> <http1|http2>
-           [--target poc|daemon] [--state DIR]
-poc checks the addon's own handoff. daemon runs a real sayld and checks the attach API.
+           [--target poc|daemon|capture] [--state DIR]
+poc checks the addon's own handoff. daemon runs a real sayld and checks the attach API with the
+PoC addon. capture is production: sayld starts its own sayl-capture, with back-pressure.
 Exits non-zero only when a check fails. Chromium needs PLAYWRIGHT_CORE; see chromium.mjs.
 """
 
@@ -28,7 +29,7 @@ PROXY_PORT = 8899
 DAEMON_PORT = 6981
 ONE_TIME_KEY = "GET /one/k9Xq2vLw7Rt4Zp1Bn6Ys/once.bin"
 EXPECTED_FILES = {"noranges.bin", "once.bin", "post.bin", "range.bin"}
-DAEMON_FILES = {"accel.bin", "once.bin", "session.bin"}
+DAEMON_FILES = {"accel.bin", "once.bin", "private.bin", "session.bin"}
 FINISH_TIMEOUT = 60.0
 
 
@@ -176,21 +177,38 @@ def _check(state: Path, driver_log: Path, stats: dict[str, Any], files: list[Pat
     return problems
 
 
-def _daemon_env(state: Path, cert: Path) -> dict[str, str]:
+def _daemon_env(state: Path, cert: Path, protocol: str = "http2") -> dict[str, str]:
     home = state / "home"
     config = home / ".config/sayl"
     config.mkdir(parents=True, exist_ok=True)
     (config / "config.toml").write_text(
-        f"port = {DAEMON_PORT}\nconnections = 4\naccelerate_min_bytes = 1048576\n"
-        f'download_dir = "{state / "out"}"\n'
+        f"port = {DAEMON_PORT}\ncapture_port = {PROXY_PORT}\nconnections = 4\n"
+        f'accelerate_min_bytes = 1048576\ndownload_dir = "{state / "out"}"\n'
     )
-    env = {key: value for key, value in os.environ.items() if not key.startswith("XDG_")}
+    hidden = ("XDG_", "DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS")
+    env = {key: value for key, value in os.environ.items() if not key.startswith(hidden)}
     return {
         **env,
         "HOME": str(home),
         "SSL_CERT_FILE": str(cert),
+        "SAYL_CAPTURE_UPSTREAM_CA": str(cert),
+        "SAYL_CAPTURE_HTTP2": "0" if protocol == "http1" else "1",
         "PYTHON_KEYRING_BACKEND": "keyring.backends.fail.Keyring",
+        "GSETTINGS_BACKEND": "memory",
     }
+
+
+def _enable_capture(token: str) -> None:
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{DAEMON_PORT}/capture",
+        json.dumps({"enabled": True, "system_proxy": False}).encode(),
+        {"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="PUT",
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310
+        status = json.load(response)
+    if status["state"] != "running":
+        raise SystemExit(f"sayl-capture did not start: {status}")
 
 
 def _daemon_get(token: str, path: str) -> Any:
@@ -248,6 +266,11 @@ def _check_daemon(
         problems.append(f"session Range requests: {stats['ranged'].get('GET /session.bin')}")
     if stats["hits"].get("GET /session.bin", 0) - stats["ranged"].get("GET /session.bin", 0) != 1:
         problems.append("the session link was not fetched exactly once with its cookie")
+    # Logged in: the Range workers must carry the cookie and Authorization the browser sent.
+    if not stats["ranged"].get("GET /private.bin"):
+        problems.append("the logged-in link was not accelerated")
+    if stats["denied"].get("GET /private.bin"):
+        problems.append(f"logged-in Range requests refused: {stats['denied']['GET /private.bin']}")
     browser_downloads = _browser_downloads(driver_log)
     if browser_downloads != []:
         problems.append(f"browser downloads: {browser_downloads}, expected none")
@@ -265,19 +288,25 @@ def run(browser: str, protocol: str, state: Path, target: str = "poc") -> int:
     origin_args = [node, str(LAB / "origin.mjs"), str(ORIGIN_PORT), str(key), str(cert)]
     services = [_spawn(origin_args, state / "origin.log")]
     driver_log = state / "driver.log"
-    steps = "steps-daemon.json" if target == "daemon" else "steps-matrix.json"
+    steps = "steps-matrix.json" if target == "poc" else "steps-daemon.json"
+    token = ""
     try:
         proxy_env = None
-        if target == "daemon":
+        if target in ("daemon", "capture"):
             daemon = [sys.executable, "-c", "from daemon.main import main; main()"]
-            services.append(_spawn(daemon, state / "daemon.log", _daemon_env(state, cert)))
+            env = _daemon_env(state, cert, protocol)
+            services.append(_spawn(daemon, state / "daemon.log", env))
+            token = _wait_for_daemon(state)
             proxy_env = {
                 **os.environ,
                 "SAYL_POC_DAEMON_URL": f"http://127.0.0.1:{DAEMON_PORT}",
-                "SAYL_POC_DAEMON_TOKEN": _wait_for_daemon(state),
+                "SAYL_POC_DAEMON_TOKEN": token,
             }
-        services.append(_spawn(proxy, state / "proxy.log", proxy_env))
-        time.sleep(3)
+        if target == "capture":
+            _enable_capture(token)  # sayld starts sayl-capture; no PoC process.
+        else:
+            services.append(_spawn(proxy, state / "proxy.log", proxy_env))
+            time.sleep(3)
         with driver_log.open("wb") as stream:
             subprocess.run(  # noqa: S603 - argument list built in this file
                 _driver(browser, steps),
@@ -286,8 +315,8 @@ def run(browser: str, protocol: str, state: Path, target: str = "poc") -> int:
                 timeout=120,
                 check=True,
             )
-        if target == "daemon":
-            rows = _wait_for_rows(proxy_env["SAYL_POC_DAEMON_TOKEN"])  # type: ignore[index]
+        if target in ("daemon", "capture"):
+            rows = _wait_for_rows(token)
             stats = _stats()
             problems = _check_daemon(state, driver_log, stats, rows)
         else:
@@ -316,10 +345,12 @@ def run(browser: str, protocol: str, state: Path, target: str = "poc") -> int:
 
 
 def main() -> int:
+    # Run the finally blocks that stop sayld and the browsers when the runner is stopped.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     parser = argparse.ArgumentParser()
     parser.add_argument("browser", choices=["chromium", "firefox"])
     parser.add_argument("protocol", choices=["http1", "http2"])
-    parser.add_argument("--target", choices=["poc", "daemon"], default="poc")
+    parser.add_argument("--target", choices=["poc", "daemon", "capture"], default="poc")
     parser.add_argument("--state", type=Path)
     args = parser.parse_args()
     if args.state is not None:

@@ -1,0 +1,7 @@
+{
+  "clipboard.summary": "Download this link?",
+  "clipboard.download": "Download",
+  "clipboard.ignore": "Ignore this site",
+  "capture.bypass.summary": "Sayl stopped intercepting {host}",
+  "capture.bypass.body": "It refused Sayl's certificate, so downloads from it now go to the browser. Edit the list in Settings."
+}

@@ -14,6 +14,12 @@ export interface DaemonEvent {
 }
 
 export const DOWNLOADS = ["downloads"] as const;
+export const MEDIA = ["capture", "media"] as const;
+
+/** A video sayl-capture saw on a page, for the floating bar; not a captured download. */
+export function isMediaReport(event: DaemonEvent): boolean {
+  return event.event === "capture.detected" && event.kind !== "download";
+}
 
 /** Events that are worth a desktop notification, and the title each one gets. */
 export const NOTIFY: Record<string, Key> = {
@@ -34,6 +40,7 @@ export function applyEvent(
   list: Download[] | undefined,
   event: DaemonEvent,
 ): { list: Download[] | undefined; refetch: boolean } {
+  if (isMediaReport(event)) return { list, refetch: false };
   if (!list) return { list, refetch: true };
   if (event.event === "download.progress") {
     const index = list.findIndex((row) => row.id === event.id);
@@ -77,6 +84,7 @@ function handle(client: QueryClient, event: DaemonEvent, refetch: () => void): v
   const { list, refetch: needed } = applyEvent(client.getQueryData<Download[]>(DOWNLOADS), event);
   if (list) client.setQueryData(DOWNLOADS, list);
   if (event.id) void client.invalidateQueries({ queryKey: ["download", event.id] });
+  if (isMediaReport(event)) void client.invalidateQueries({ queryKey: MEDIA });
   if (event.event === "download.removed" && useUi.getState().selected === event.id) {
     useUi.getState().select(null);
   }

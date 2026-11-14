@@ -142,6 +142,8 @@ def _summary(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
+    # Run the finally blocks that stop sayld and the browsers when the runner is stopped.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", type=Path)
     args = parser.parse_args()

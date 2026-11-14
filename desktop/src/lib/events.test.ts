@@ -16,6 +16,12 @@ describe("applyEvent", () => {
     expect(result.list?.[0]?.status).toBe("paused");
   });
 
+  it("leaves the list alone for a video report, but a captured download refetches", () => {
+    const list = [download()];
+    expect(applyEvent(list, { event: "capture.detected", kind: "page", page_url: "https://v.example/" })).toEqual({ list, refetch: false });
+    expect(applyEvent(list, { event: "capture.detected", kind: "download", id: "d9" }).refetch).toBe(true);
+  });
+
   it("drops removed downloads and refetches for anything else", () => {
     expect(applyEvent([download()], { event: "download.removed", id: "d1" }).list).toEqual([]);
     expect(applyEvent([download()], { event: "download.completed", id: "d1" }).refetch).toBe(true);

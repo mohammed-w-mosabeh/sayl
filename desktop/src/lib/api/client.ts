@@ -57,7 +57,9 @@ export function makeApi(connection: Connection, fetcher: typeof fetch = globalTh
     downloads: () => unwrap(client.GET("/downloads")),
     download: (download: string) => unwrap(client.GET("/downloads/{download_id}", id(download))),
     add: (body: AddDownload) => unwrap(client.POST("/downloads", { body })),
-    probe: (url: string) => unwrap(client.POST("/probe", { body: { url, headers: {} } })),
+    probe: (url: string, headers: Record<string, string> = {}) =>
+      unwrap(client.POST("/probe", { body: { url, headers } })),
+    media: () => unwrap(client.GET("/capture/media")) as Promise<unknown>,
     pause: (download: string) => unwrap(client.POST("/downloads/{download_id}/pause", id(download))),
     resume: (download: string) =>
       unwrap(client.POST("/downloads/{download_id}/resume", id(download))),

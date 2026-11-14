@@ -9,6 +9,7 @@ import contextlib
 import logging
 import os
 import re
+import shutil
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -18,6 +19,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from daemon.capture.hints import looks_single_use
+from daemon.config import DEFAULT_SPOOL_MAX_BYTES
 from daemon.engines.base import (
     Engine,
     EngineError,
@@ -33,8 +35,11 @@ from daemon.models import EngineName, PolicyReason, SegmentSource, Status
 log = logging.getLogger(__name__)
 
 CHUNK = 256 * 1024
+STALL_SECONDS = 120.0  # A stream silent this long while we read it is treated as lost.
+RANGE_RETRY_SECONDS = 600.0  # A Range connection retries network errors this long without progress.
 SAVE_EVERY_SECONDS = 1.0
 NEEDS_REFRESH = "link expired, refresh it"
+NETWORK_LOST = "the network dropped, resume to retry"
 CANNOT_CONTINUE = "this link cannot continue the file, refresh it with another"
 FORWARDED = ("cookie", "authorization", "referer", "user-agent")
 _CONTENT_RANGE = re.compile(r"bytes (\d+)-(\d+)/(\d+)$")
@@ -95,6 +100,14 @@ def may_resume(info: StreamInfo) -> bool:
     )
 
 
+def free_bytes(path: Path) -> int:
+    return shutil.disk_usage(path).free
+
+
+class _SpoolFull(EngineError):
+    """A paused stream that cannot resume read as far as it may. It ends in needs_refresh."""
+
+
 def plan_segments(offset: int, total: int, connections: int) -> tuple[int, list[tuple[int, int]]]:
     """Split what is left. The stream keeps the first share; ranges are returned tail first."""
     share = max(1, (total - offset) // connections)
@@ -144,7 +157,7 @@ class _Canceled(Exception):
 
 class _Rejected(Exception):
     def __init__(self, reason: PolicyReason | None) -> None:
-        self.reason = reason  # None means a network failure: fall back, but keep the host.
+        self.reason = reason  # None means a network failure: keep the host and every byte.
 
 
 class _Transfer:
@@ -175,6 +188,11 @@ class _Transfer:
         self.finished = asyncio.Event()
         self.canceled = False
         self.filling = False  # The stream is gone, so ranges alone describe the file.
+        self.network_lost = False  # Range connections gave up on the network, not the server.
+        # A paused stream normally waits under back-pressure. A link that cannot resume would
+        # die if the server times the idle connection out, so it keeps writing ahead instead.
+        self.spool = not may_resume(job.stream)
+        self.spool_start: int | None = None
 
     @property
     def total(self) -> int | None:
@@ -201,6 +219,9 @@ class _Transfer:
 
     async def _write(self, data: bytes, offset: int) -> None:
         await self.running.wait()
+        await self._write_now(data, offset)
+
+    async def _write_now(self, data: bytes, offset: int) -> None:
         await self.limiter.acquire(len(data))
         await self.engine.limiter.acquire(len(data))
         await asyncio.to_thread(os.pwrite, self.fd, data, offset)
@@ -218,9 +239,21 @@ class _Transfer:
             self.saved_at = now
             await self.engine.store.save_segments(self.job.id, self.segments())
 
+    async def _chunks(self, stream: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
+        """The stream's chunks. A dead connection can stay silent forever: give up on it."""
+        iterator = aiter(stream)
+        while True:
+            try:
+                chunk = await asyncio.wait_for(anext(iterator), self.engine.stall_seconds)
+            except StopAsyncIteration:
+                return
+            except TimeoutError:
+                raise EngineError("the stream stalled") from None
+            yield chunk
+
     async def pump(self, stream: AsyncIterator[bytes]) -> None:
         """Write the original stream, pausing it at the boundary without closing it."""
-        async for chunk in stream:
+        async for chunk in self._chunks(stream):
             data = chunk
             while data:
                 self._check_canceled()
@@ -235,8 +268,9 @@ class _Transfer:
                     room = min(room, limit - self.offset)
                 if room <= 0:
                     return
+                room = await self._hold(room)
                 self.reserved = self.offset + room
-                await self._write(data[:room], self.offset)
+                await self._write_now(data[:room], self.offset)
                 self.offset += room
                 data = data[room:]
                 self._notify()
@@ -246,6 +280,30 @@ class _Transfer:
             if self.at_boundary and self._ranges_complete():
                 return
 
+    async def _hold(self, room: int) -> int:
+        """Wait while paused, or spool ahead within the bound. Returns how much may be written.
+
+        See "Spool bound" in docs/SPEC.md: the bound counts from the pause, and a spool that
+        cannot start or has to stop leaves the stream for needs_refresh with every byte kept.
+        """
+        if self.running.is_set():
+            self.spool_start = None
+            return room
+        if not self.spool:
+            await self.running.wait()
+            self._check_canceled()
+            return room
+        limit = self.engine.spool_max
+        if self.spool_start is None:
+            left = limit if self.total is None else min(limit, self.total - self.offset)
+            if await asyncio.to_thread(free_bytes, self.directory) < left:
+                raise _SpoolFull("not enough free space to hold a paused stream")
+            self.spool_start = self.offset
+        allowed = self.spool_start + limit - self.offset
+        if allowed <= 0:
+            raise _SpoolFull("a paused stream reached the spool limit")
+        return min(room, allowed)
+
     def _check_canceled(self) -> None:
         if self.canceled:
             raise _Canceled
@@ -253,6 +311,9 @@ class _Transfer:
     async def _wait_at_boundary(self) -> None:
         while self.boundary is not None and not self._ranges_complete():
             self._check_canceled()
+            if self.network_lost:
+                # Finish from the segment map by Range, keeping what the ranges already wrote.
+                raise EngineError("Range connections lost the network")
             self.changed.clear()
             await self.changed.wait()
 
@@ -276,6 +337,30 @@ class _Transfer:
         return {**wanted, "Range": f"bytes={start}-{last}", "Accept-Encoding": "identity"}
 
     async def _fetch(self, segment: SegmentState, validated: asyncio.Event) -> None:
+        """Fetch one segment. A network error is retried from where it stopped; a refusal is not.
+
+        Retrying stops once the segment has made no progress for range_retry_seconds, so a
+        Wi-Fi outage of a few minutes costs nothing.
+        """
+        loop = asyncio.get_running_loop()
+        attempt = 0
+        failing_since = loop.time()
+        while True:
+            before = segment.done
+            try:
+                await self._fetch_once(segment, validated)
+                return
+            except _Rejected as rejected:
+                if rejected.reason is not None:
+                    raise
+                if segment.done > before:
+                    attempt, failing_since = 0, loop.time()
+                if loop.time() - failing_since >= self.engine.range_retry_seconds:
+                    raise
+            await asyncio.sleep(min(30.0, self.engine.retry_delay * 2**attempt))
+            attempt += 1
+
+    async def _fetch_once(self, segment: SegmentState, validated: asyncio.Event) -> None:
         start = segment.start + segment.done
         end = None if segment.open_ended else segment.end
         request = self.engine.client.stream("GET", self.job.url, headers=self._headers(start, end))
@@ -339,9 +424,14 @@ class _Transfer:
         try:
             await self._run_workers()
         except _Rejected as rejected:
+            if rejected.reason is None:
+                log.info("acceleration lost the network", extra={"fields": {"host": host}})
+                self.network_lost = True
+                self._notify()
+                await self._save(force=True)
+                return
             log.info("acceleration cancelled", extra={"fields": {"host": host}})
-            if rejected.reason is not None:
-                await self.engine.store.block_host(host, rejected.reason)
+            await self.engine.store.block_host(host, rejected.reason)
             self._fall_back()
             await self._save(force=True)
             return
@@ -409,8 +499,16 @@ class HybridEngine(Engine):
         connections: int = 16,
         min_bytes: int = 20 * 1024 * 1024,
         limiter: Limiter | None = None,
+        spool_max: int = DEFAULT_SPOOL_MAX_BYTES,
+        stall_seconds: float = STALL_SECONDS,
+        retry_delay: float = 1.0,
+        range_retry_seconds: float = RANGE_RETRY_SECONDS,
     ) -> None:
+        self.range_retry_seconds = range_retry_seconds
         self.store = store
+        self.spool_max = spool_max
+        self.stall_seconds = stall_seconds
+        self.retry_delay = retry_delay
         self.client = client or httpx.AsyncClient(follow_redirects=False, timeout=30)
         self.connections = connections
         self.min_bytes = min_bytes
@@ -471,9 +569,13 @@ class HybridEngine(Engine):
             await transfer.fill(segments)
             await transfer.finish()
         except _Rejected as rejected:
-            if respect_policy and rejected.reason is not None:
+            if rejected.reason is None:
+                message = NETWORK_LOST
+            elif respect_policy:
                 await self.store.block_host(host, rejected.reason)
-            message = NEEDS_REFRESH if respect_policy else CANNOT_CONTINUE
+                message = NEEDS_REFRESH
+            else:
+                message = CANNOT_CONTINUE
             await self._needs_refresh(transfer, transfer.ranges, message)
         except _Canceled:
             transfer.discard()

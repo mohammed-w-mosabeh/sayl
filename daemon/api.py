@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from starlette.requests import ClientDisconnect
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from daemon.capture.manager import CaptureManager
 from daemon.config import Config
 from daemon.engines.base import Engine, EngineError, ProbeResult, StreamInfo
 from daemon.engines.hybrid import may_resume
@@ -154,6 +155,37 @@ class ProbeOut(BaseModel):
     engine: EngineName
 
 
+class CaptureUpdate(BaseModel):
+    enabled: bool
+    system_proxy: bool = False
+
+
+class CaInstall(BaseModel):
+    system: bool = True
+
+
+class MediaReport(BaseModel):
+    kind: str  # manifest or page
+    page_url: str
+    url: str
+    drm: bool = False
+    extractor: str = ""
+
+
+class BypassReport(BaseModel):
+    host: str
+    reason: str = "tls"
+
+
+class CaptureOut(BaseModel):
+    # off, starting, running, or failed.
+    state: str
+    error: str
+    port: int
+    system_proxy: bool
+    ca: dict[str, Any] | None
+
+
 class InfoOut(BaseModel):
     version: str
     default_dir: str
@@ -173,6 +205,7 @@ class Services:
     token: str
     default_dir: str
     clipboard: ClipboardService | None = None
+    capture: CaptureManager | None = None
 
 
 async def create_download(services: Services, body: AddDownload) -> Download:
@@ -286,7 +319,7 @@ def create_app(services: Services) -> FastAPI:
         row.filename = row.filename or filename_from_response(body.url, lower)
         row.engine_ref = row.id
         await run(store.add, row)
-        services.bus.publish("capture.detected", id=row.id, filename=row.filename)
+        services.bus.publish("capture.detected", kind="download", id=row.id, filename=row.filename)
         services.bus.publish("download.added", id=row.id)
         return public(row)
 
@@ -385,7 +418,45 @@ def create_app(services: Services) -> FastAPI:
         settings = await run(store.settings)
         if services.clipboard is not None:
             await services.clipboard.apply(settings)
+        services.bus.publish("settings.updated", keys=sorted(values))
         return settings
+
+    def capture() -> CaptureManager:
+        if services.capture is None:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "capture is not available")
+        return services.capture
+
+    @app.get("/capture", dependencies=auth)
+    async def capture_status() -> CaptureOut:
+        return CaptureOut(**await run(capture().status))
+
+    @app.put("/capture", dependencies=auth)
+    async def capture_update(body: CaptureUpdate) -> CaptureOut:
+        """Start or stop sayl-capture, and point the system proxy at it if asked."""
+        await capture().apply(enabled=body.enabled, system_proxy=body.system_proxy)
+        return CaptureOut(**await run(capture().status))
+
+    @app.post("/capture/ca", dependencies=auth)
+    async def capture_install_ca(body: CaInstall) -> dict[str, Any]:
+        """Create the CA if needed and trust it. The system store asks for a password."""
+        return (await capture().install_ca(body.system)).as_dict()
+
+    @app.post("/capture/uninstall", dependencies=auth)
+    async def capture_uninstall() -> dict[str, Any]:
+        """Restore the proxy settings, stop capturing, remove the CA from every store."""
+        return (await capture().uninstall()).as_dict()
+
+    @app.get("/capture/media", dependencies=auth)
+    async def capture_media() -> list[dict[str, Any]]:
+        return capture().media_list()
+
+    @app.post("/capture/media", dependencies=auth, status_code=204)
+    async def capture_report_media(body: MediaReport) -> None:
+        capture().report_media(body.model_dump())
+
+    @app.post("/capture/bypass", dependencies=auth, status_code=204)
+    async def capture_bypass(body: BypassReport) -> None:
+        await capture().add_bypass(body.host)
 
     def crud(path: str, model: type[Category] | type[Schedule]) -> None:
         async def create(row: model) -> model:  # type: ignore[valid-type]

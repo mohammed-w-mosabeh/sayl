@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { download } from "@/test/fixtures";
-import { canPause, canResume, counts, matches, search, sorted, statusKey, title } from "./status";
+import { NETWORK_LOST, canPause, canResume, counts, matches, search, sorted, statusKey, title } from "./status";
 
 describe("status", () => {
   it("marks a degraded completion as a warning", () => {
@@ -23,6 +23,8 @@ describe("status", () => {
   it("never queues a captured stream again: it needs a fresh link", () => {
     expect(canResume(download({ engine: "hybrid", status: "failed" }))).toBe(false);
     expect(canResume(download({ engine: "hybrid", status: "paused" }))).toBe(true);
+    expect(canResume(download({ engine: "hybrid", status: "needs_refresh", error: NETWORK_LOST }))).toBe(true);
+    expect(canResume(download({ engine: "hybrid", status: "needs_refresh", error: "link expired" }))).toBe(false);
     expect(canResume(download({ engine: "aria2", status: "failed" }))).toBe(true);
     expect(canPause(download({ status: "needs_refresh" }))).toBe(false);
   });

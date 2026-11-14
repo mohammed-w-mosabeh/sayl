@@ -4,6 +4,102 @@
  */
 
 export interface paths {
+    "/capture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Capture Status */
+        get: operations["capture_status_capture_get"];
+        /**
+         * Capture Update
+         * @description Start or stop sayl-capture, and point the system proxy at it if asked.
+         */
+        put: operations["capture_update_capture_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/bypass": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Capture Bypass */
+        post: operations["capture_bypass_capture_bypass_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/ca": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Capture Install Ca
+         * @description Create the CA if needed and trust it. The system store asks for a password.
+         */
+        post: operations["capture_install_ca_capture_ca_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Capture Media */
+        get: operations["capture_media_capture_media_get"];
+        put?: never;
+        /** Capture Report Media */
+        post: operations["capture_report_media_capture_media_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/uninstall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Capture Uninstall
+         * @description Restore the proxy settings, stop capturing, remove the CA from every store.
+         */
+        post: operations["capture_uninstall_capture_uninstall_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/categories": {
         parameters: {
             query?: never;
@@ -383,6 +479,49 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** BypassReport */
+        BypassReport: {
+            /** Host */
+            host: string;
+            /**
+             * Reason
+             * @default tls
+             */
+            reason?: string;
+        };
+        /** CaInstall */
+        CaInstall: {
+            /**
+             * System
+             * @default true
+             */
+            system?: boolean;
+        };
+        /** CaptureOut */
+        CaptureOut: {
+            /** Ca */
+            ca: {
+                [key: string]: unknown;
+            } | null;
+            /** Error */
+            error: string;
+            /** Port */
+            port: number;
+            /** State */
+            state: string;
+            /** System Proxy */
+            system_proxy: boolean;
+        };
+        /** CaptureUpdate */
+        CaptureUpdate: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * System Proxy
+             * @default false
+             */
+            system_proxy?: boolean;
+        };
         /** Category */
         Category: {
             /**
@@ -502,6 +641,25 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** MediaReport */
+        MediaReport: {
+            /**
+             * Drm
+             * @default false
+             */
+            drm?: boolean;
+            /**
+             * Extractor
+             * @default
+             */
+            extractor?: string;
+            /** Kind */
+            kind: string;
+            /** Page Url */
+            page_url: string;
+            /** Url */
+            url: string;
+        };
         /** PatchDownload */
         PatchDownload: {
             /** Filename */
@@ -611,6 +769,200 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    capture_status_capture_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureOut"];
+                };
+            };
+        };
+    };
+    capture_update_capture_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptureUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    capture_bypass_capture_bypass_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BypassReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    capture_install_ca_capture_ca_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaInstall"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    capture_media_capture_media_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    capture_report_media_capture_media_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    capture_uninstall_capture_uninstall_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     "list/categories": {
         parameters: {
             query?: never;

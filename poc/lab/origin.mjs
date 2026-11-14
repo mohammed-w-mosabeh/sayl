@@ -12,9 +12,12 @@ const body = Buffer.alloc(SIZE);
 for (let i = 0; i < SIZE; i += 4) body.writeUInt32LE(i >>> 0, i);
 const sha256 = createHash('sha256').update(body).digest('hex');
 
-const stats = { sha256, hits: {}, ranged: {}, completed: {}, aborted: {}, bytesSent: {} };
+const stats = { sha256, hits: {}, ranged: {}, completed: {}, aborted: {}, bytesSent: {}, denied: {} };
 const ONE_TIME = '/one/k9Xq2vLw7Rt4Zp1Bn6Ys/once.bin';
 const VALIDATOR = '"lab-v1"';
+// The logged-in area: HTTP Basic plus the session cookie /login sets, on every request.
+const AUTH = `Basic ${Buffer.from('lab:secret').toString('base64')}`;
+const LOGIN_PAGE = '<!doctype html><title>account</title>signed in';
 const bump = (map, key, by = 1) => { map[key] = (map[key] ?? 0) + by; };
 
 const PAGE = `<!doctype html><title>lab</title>
@@ -61,6 +64,19 @@ function handler(req, res) {
     res.writeHead(200, { 'content-type': 'text/html', 'set-cookie': 'sid=lab; Path=/; Secure' });
     return res.end(url.pathname === '/page' ? PAGE : '<!doctype html><title>next</title>ok');
   }
+  if (url.pathname === '/login' || url.pathname === '/private.bin') {
+    const cookie = url.pathname === '/login' || /sid=lab/.test(req.headers.cookie ?? '');
+    if (req.headers.authorization !== AUTH || !cookie) {
+      // The browser's own first try is a normal challenge; a refused Range request is a bug.
+      if (req.headers.range) bump(stats.denied, key);
+      res.writeHead(401, { 'www-authenticate': 'Basic realm="lab"' });
+      return res.end('log in');
+    }
+    if (url.pathname === '/login') {
+      res.writeHead(200, { 'content-type': 'text/html', 'set-cookie': 'sid=lab; Path=/; Secure' });
+      return res.end(LOGIN_PAGE);
+    }
+  }
   if (url.pathname === ONE_TIME && stats.hits[key] > 1) {
     res.writeHead(410);
     return res.end('used');
@@ -69,7 +85,7 @@ function handler(req, res) {
     res.writeHead(403);
     return res.end('session bound');
   }
-  if (url.pathname === ONE_TIME || url.pathname === '/session.bin' || url.pathname === '/accel.bin') {
+  if ([ONE_TIME, '/session.bin', '/accel.bin', '/private.bin'].includes(url.pathname)) {
     Object.assign(attachment, { 'accept-ranges': 'bytes', etag: VALIDATOR,
       'content-disposition': `attachment; filename="${url.pathname.split('/').pop()}"` });
     const match = /bytes=(\d+)-(\d*)/.exec(req.headers.range ?? '');

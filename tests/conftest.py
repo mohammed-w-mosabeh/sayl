@@ -7,3 +7,6 @@ os.environ["PYTHON_KEYRING_BACKEND"] = "keyring.backends.fail.Keyring"
 # stays off. Tests that need one start Xvfb, a headless compositor, or a private bus.
 for name in ("DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE", "DBUS_SESSION_BUS_ADDRESS"):
     os.environ.pop(name, None)
+
+# Nor their system proxy: gsettings in a test writes to memory unless a test chooses a keyfile.
+os.environ["GSETTINGS_BACKEND"] = "memory"

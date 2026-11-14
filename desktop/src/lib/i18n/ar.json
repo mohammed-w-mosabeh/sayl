@@ -1,4 +1,5 @@
 {
+  "language.name": "العربية",
   "app.name": "سَيل",
   "app.tagline": "مدير التنزيلات",
   "nav.downloads": "التنزيلات",
@@ -171,5 +172,9 @@
   "drop.rejected": "ليس رابطًا",
   "tray.show": "أظهر سَيل",
   "tray.drop_target": "هدف الإفلات العائم",
-  "tray.quit": "أنهِ سَيل"
+  "tray.quit": "أنهِ سَيل",
+  "settings.video_bar": "اعرض الفيديوهات التي أشغّلها في شريط عائم",
+  "bar.reading": "جارٍ قراءة الجودات المتاحة…",
+  "bar.download": "نزّل",
+  "bar.dismiss": "ليس هذا"
 }

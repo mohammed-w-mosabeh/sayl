@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -72,7 +73,9 @@ def sayld(tmp_path_factory: pytest.TempPathFactory, origin: Origin) -> Iterator[
     out, port = home / "out", free_port()
     config = home / ".config/sayl"
     config.mkdir(parents=True)
-    (config / "config.toml").write_text(f'port = {port}\ndownload_dir = "{out}"\n')
+    (config / "config.toml").write_text(
+        f'port = {port}\ncapture_port = {free_port()}\ndownload_dir = "{out}"\n'
+    )
     env = {key: value for key, value in os.environ.items() if not key.startswith("XDG_")}
     process = subprocess.Popen(
         [sys.executable, "-c", "from daemon.main import main; main()"],
@@ -242,3 +245,24 @@ def test_size(value: int, text: str) -> None:
 
 def test_progress_without_a_known_size() -> None:
     assert progress({"total_bytes": 0, "done_bytes": 2048}) == "2.0 KB"
+
+
+def test_capture_enable_status_disable_and_uninstall(sayld: Sayld) -> None:
+    assert "not created yet" in sayl("capture", "status")
+    enabled = sayl("capture", "enable", "--no-system-proxy")
+    assert "running" in enabled
+    assert "No browser trusts the Sayl CA yet" in enabled
+    status = as_json("capture", "status")
+    assert (status["state"], status["system_proxy"]) == ("running", False)
+    assert status["ca"]["name"].startswith("Sayl local CA")
+    assert "off" in sayl("capture", "disable")
+    removed = sayl("capture", "uninstall")
+    assert "system" in removed
+    assert as_json("capture", "status")["ca"] is None
+
+
+def test_capture_install_ca_reports_each_store(sayld: Sayld) -> None:
+    has_certutil = shutil.which("certutil") is not None
+    output = sayl("capture", "install-ca", "--no-system", code=0 if has_certutil else 1)
+    assert "chrome" in output if has_certutil else "libnss3-tools" in output
+    sayl("capture", "uninstall")

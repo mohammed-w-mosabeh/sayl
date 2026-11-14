@@ -1,15 +1,18 @@
 [
   {"goto": "https://127.0.0.1:8443/page"},
-  {"click": "#accel"},
+  {"click": "#accel", "answered": "/accel.bin"},
   {"wait": 300},
   {"goto": "https://127.0.0.1:8443/next"},
   {"wait": 4000},
   {"goto": "https://127.0.0.1:8443/page"},
-  {"click": "#onetime"},
+  {"click": "#onetime", "answered": "/one/k9Xq2vLw7Rt4Zp1Bn6Ys/once.bin"},
   {"wait": 300},
   {"goto": "https://127.0.0.1:8443/next"},
+  {"goto": "https://lab:secret@127.0.0.1:8443/login"},
+  {"goto": "https://lab:secret@127.0.0.1:8443/private.bin", "download": true},
+  {"wait": 300},
   {"goto": "https://127.0.0.1:8443/page"},
-  {"click": "#session"},
+  {"click": "#session", "answered": "/session.bin"},
   {"wait": 300},
   {"quit": true}
 ]

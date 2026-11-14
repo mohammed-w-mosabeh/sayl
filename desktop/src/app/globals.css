@@ -83,7 +83,9 @@
 
 /* The drop target window is transparent around its rounded body. */
 html.drop-window,
-html.drop-window body {
+html.drop-window body,
+html.bar-window,
+html.bar-window body {
   background: transparent;
   overflow: hidden;
 }

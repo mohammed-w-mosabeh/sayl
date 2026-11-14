@@ -1,7 +1,9 @@
 // Drives Playwright's Chromium through the proxy in a throwaway profile.
 // Usage: PLAYWRIGHT_CORE=<dir> [CHROME=<bin>] node chromium.mjs <proxy-port|direct> <steps.json>
 // "direct" skips the proxy: a site that fails there too is not a capture failure.
-// Each step: {"goto": url} | {"click": selector} | {"wait": ms} | {"name": label}
+// Each step: {"goto": url} | {"click": selector, "answered"?: path} | {"wait": ms} | {"name": label}
+// "answered" waits until the proxy has answered that path: the click's request may still be
+// waiting on a TLS retry, and navigating away first would cancel it before it is sent.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
@@ -32,10 +34,23 @@ for (const step of steps) {
   let note = '';
   try {
     if (step.goto) {
-      const response = await page.goto(step.goto, { timeout: 60000, waitUntil: 'domcontentloaded' });
+      // Chromium answers a Basic challenge from URL credentials only sometimes, and otherwise
+      // waits on a prompt headless cannot show. Send them up front, as a logged-in browser does.
+      const target = new URL(step.goto);
+      if (target.username) {
+        const user = `${decodeURIComponent(target.username)}:${decodeURIComponent(target.password)}`;
+        await page.setExtraHTTPHeaders({ authorization: `Basic ${Buffer.from(user).toString('base64')}` });
+        target.username = '';
+        target.password = '';
+      }
+      const response = await page.goto(target.href, { timeout: 60000, waitUntil: 'domcontentloaded' });
       note = `status=${response?.status()} title=${JSON.stringify(await page.title())}`;
     } else if (step.click) {
+      const answered = step.answered
+        ? page.waitForResponse((r) => new URL(r.url()).pathname === step.answered, { timeout: 20000 })
+        : null;
       await page.click(step.click, { timeout: 20000, noWaitAfter: true });
+      await answered;
     } else if (step.script) {
       await page.evaluate(step.script);
     } else if (step.quit) {

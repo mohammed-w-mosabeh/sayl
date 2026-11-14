@@ -51,15 +51,15 @@ Claude Code updates these checkboxes at the end of each phase. Acceptance criter
 - [x] Acceptance: a copied link is offered within 1 s on X11 and wlroots Wayland, and within 2 s on GNOME Wayland
 
 ## Phase 5 — Capture proxy  (tag `v0.2.0`)
-- [ ] Per-machine CA, install into system / NSS / Firefox profiles, uninstall
-- [ ] System proxy toggle with save/restore
-- [ ] Production addon: detection, stream-first handoff to HybridEngine, bypass list
-- [ ] Real back-pressure in `mitm_adapter.py`, and cancelling the upstream once the daemon finishes
-- [ ] Spool bound: 512 MB default, free-space check, `needs_refresh` when reached
-- [ ] Video grabber + floating bar
-- [ ] Acceptance: >400 MB Google Drive file with the virus-scan page completes under a speed limit
-- [ ] Acceptance: logged-in download forwards cookies and Authorization (lab login server + one real site)
-- [ ] Acceptance: no added stalls on a 10-minute 1080p HLS stream, compared with no proxy
+- [x] Per-machine CA, install into system / NSS / Firefox profiles, uninstall
+- [x] System proxy toggle with save/restore
+- [x] Production addon: detection, stream-first handoff to HybridEngine, bypass list
+- [x] Real back-pressure in `mitm_adapter.py`, and cancelling the upstream once the daemon finishes
+- [x] Spool bound: 512 MB default, free-space check, `needs_refresh` when reached
+- [x] Video grabber + floating bar
+- [x] Acceptance: >400 MB Google Drive file with the virus-scan page completes under a speed limit
+- [x] Acceptance: logged-in download forwards cookies and Authorization (lab login server + one real site)
+- [x] Acceptance: no added stalls on a 10-minute 1080p HLS stream, compared with no proxy
 
 ## Phase 6 — IDM parity
 - [ ] Scheduler, speed schedules, post-completion actions

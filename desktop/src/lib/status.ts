@@ -65,9 +65,14 @@ export function canPause(row: Download): boolean {
   return row.status === "active" || row.status === "queued";
 }
 
-/** A captured stream cannot be queued again: it needs a fresh link instead. */
+/** The daemon's NETWORK_LOST: the link is fine, only the connection dropped. */
+export const NETWORK_LOST = "the network dropped, resume to retry";
+
+/** A captured stream cannot be queued again: it needs a fresh link, unless the network dropped. */
 export function canResume(row: Download): boolean {
-  if (row.engine === "hybrid") return row.status === "paused";
+  if (row.engine === "hybrid") {
+    return row.status === "paused" || (row.status === "needs_refresh" && row.error === NETWORK_LOST);
+  }
   return row.status === "paused" || row.status === "failed" || row.status === "canceled";
 }
 

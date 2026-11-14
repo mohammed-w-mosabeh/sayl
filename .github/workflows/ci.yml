@@ -18,7 +18,7 @@ jobs:
           enable-cache: true
       - run: >-
           sudo apt-get update && sudo apt-get install --yes aria2 ffmpeg
-          xvfb xclip sway wl-clipboard dbus
+          xvfb xclip sway wl-clipboard dbus libnss3-tools
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -26,7 +26,7 @@ jobs:
       - run: uv run pytest
         env:
           SAYL_LARGE_TEST: "1"
-          SAYL_REQUIRE_DISPLAYS: "1"  # Clipboard tests on Xvfb, headless sway, and a private bus.
+          SAYL_REQUIRE_TOOLS: "1"  # Xvfb, headless sway, a private bus, and certutil must exist.
       - run: uv run pytest -m timing --no-cov
 
   capture-lab:
@@ -37,7 +37,7 @@ jobs:
       matrix:
         browser: [chromium, firefox]
         protocol: [http1, http2]
-        target: [poc, daemon]
+        target: [poc, daemon, capture]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7

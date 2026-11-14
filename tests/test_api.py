@@ -10,7 +10,8 @@ import pytest
 import websockets
 
 from daemon.api import VERSION, DownloadOut
-from daemon.models import Download, PolicyReason
+from daemon.engines.hybrid import NETWORK_LOST, HybridEngine
+from daemon.models import Download, EngineName, PolicyReason
 from daemon.openapi import schema
 from daemon.vault import Vault
 from tests.origin import BODY, ETAG, SHA256, SIZE, TOKEN, Origin, open_stream
@@ -141,6 +142,28 @@ async def test_cut_stream_needs_refresh_then_continues(stack: Stack, origin: Ori
     assert body["status"] == "completed"
     assert origin.range_log[-1].startswith(f"bytes={SIZE // 2}-")
     assert file_hash(stack) == SHA256
+
+
+async def test_a_network_outage_waits_then_resumes(stack: Stack, origin: Origin) -> None:
+    hybrid = stack.daemon.services.engines[EngineName.HYBRID]
+    assert isinstance(hybrid, HybridEngine)
+    hybrid.retry_delay, hybrid.range_retry_seconds = 0.01, 0.2
+    origin.down = True
+    download_id = await attach_and_cut(stack, origin.url("/normal.bin"))
+    body = await wait_for(stack, download_id, "needs_refresh", "completed", "failed")
+    assert (body["status"], body["error"]) == ("needs_refresh", NETWORK_LOST)
+    kept = body["done_bytes"]
+    assert kept > 0
+    origin.down = False
+    before = len(origin.range_log)
+    resumed = await stack.client.post(f"/downloads/{download_id}/resume")
+    assert resumed.status_code == 200
+    body = await wait_for(stack, download_id, "completed", "needs_refresh", "failed")
+    assert body["status"] == "completed"
+    assert file_hash(stack) == SHA256
+    assert origin.hits == origin.ranges  # Never fetched whole: every kept byte was reused.
+    spans = (r.removeprefix("bytes=").split("-") for r in origin.range_log[before:])
+    assert sum(int(last) - int(first) + 1 for first, last in spans) == SIZE - kept
 
 
 async def test_token_is_required_everywhere(stack: Stack) -> None:

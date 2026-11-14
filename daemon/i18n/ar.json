@@ -1,0 +1,7 @@
+{
+  "clipboard.summary": "أتريد تنزيل هذا الرابط؟",
+  "clipboard.download": "تنزيل",
+  "clipboard.ignore": "تجاهل هذا الموقع",
+  "capture.bypass.summary": "توقف سَيل عن اعتراض {host}",
+  "capture.bypass.body": "رفض شهادة سَيل، لذا تذهب تنزيلاته الآن إلى المتصفح. عدّل القائمة من الإعدادات."
+}

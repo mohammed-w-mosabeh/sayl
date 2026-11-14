@@ -61,7 +61,7 @@ describe("buildRequest", () => {
 
 describe("ignoreList", () => {
   it("splits lines and commas, lowercases, and drops blanks and repeats", () => {
-    expect(ignoreList("Bank.example\n\n*.pdf, bank.example،shop.example ")).toEqual([
+    expect(ignoreList("Bank.example\n\n*.pdf, bank.example\u060Cshop.example ")).toEqual([
       "bank.example",
       "*.pdf",
       "shop.example",

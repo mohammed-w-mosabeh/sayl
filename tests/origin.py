@@ -24,6 +24,7 @@ class Origin:
     ranges: Counter[str] = field(default_factory=Counter)
     cookies: list[str] = field(default_factory=list)
     range_log: list[str] = field(default_factory=list)
+    down: bool = False  # Every Range connection drops with no answer, as with no network.
     server: asyncio.Server | None = None
     port: int = 0
 
@@ -81,6 +82,21 @@ class Origin:
             return send("206 Partial Content", body[start : end + 1], content_range, *common)
         if path.startswith("/slow/"):
             await self._trickle(writer, wanted)
+            return None
+        outage = path.startswith("/outage/") and self.ranges[path] <= int(path.split("/")[2])
+        middle = path.startswith("/tailonly/") and not (wanted or "").endswith(f"-{SIZE - 1}")
+        if wanted and (outage or middle or self.down):
+            # /outage/<n>/: the first n Range connections drop with no answer, as while the
+            # Wi-Fi is down. /tailonly/: every Range but the one ending the file does.
+            writer.close()
+            return None
+        if path.startswith("/flaky/") and wanted and self.ranges[path] == 1:
+            # The first Range connection drops halfway, as on a network change.
+            first = int(wanted.removeprefix("bytes=").partition("-")[0])
+            head = f"HTTP/1.1 206 Partial Content\r\nContent-Length: {SIZE - first}\r\n"
+            head += f"ETag: {ETAG}\r\nContent-Range: bytes {first}-{SIZE - 1}/{SIZE}\r\n\r\n"
+            writer.write(head.encode() + BODY[first : first + (SIZE - first) // 2])
+            writer.close()
             return None
         if path.startswith("/once/") and self.hits[path] > 1:
             return send("410 Gone", b"used")
