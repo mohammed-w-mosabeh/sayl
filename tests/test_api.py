@@ -97,6 +97,37 @@ async def test_stale_progress_does_not_undo_a_finish(stack: Stack) -> None:
     assert after.done_bytes == SIZE
 
 
+async def test_a_second_finish_waits_for_the_first_to_be_recorded(
+    stack: Stack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """poll() and run_attached() can both see a capture finish. The one that loses must not
+    return until the winner has written completed, or the API answers with a stale row."""
+    services = stack.daemon.services
+    queue = services.queue
+    row = services.store.add(Download(url="https://a.example/f.bin", engine=EngineName.HYBRID))
+    queue.active[row.id] = EngineName.HYBRID
+    entered, release = asyncio.Event(), asyncio.Event()
+    categorize = queue._categorize
+
+    async def slow(row: Download, filename: str) -> dict[str, Any]:
+        entered.set()
+        await release.wait()
+        return await categorize(row, filename)
+
+    monkeypatch.setattr(queue, "_categorize", slow)
+    done = Progress(Status.COMPLETED, SIZE, SIZE, filename="f.bin")
+    first = asyncio.create_task(queue.apply(row, done))
+    await entered.wait()
+    second = asyncio.create_task(queue.apply(row, done))
+    await asyncio.sleep(0.1)
+    assert not second.done()
+    release.set()
+    await asyncio.gather(first, second)
+    after = services.store.download(row.id)
+    assert after is not None
+    assert after.status is Status.COMPLETED
+
+
 async def test_acceptance_range_capable_link_is_accelerated(stack: Stack, origin: Origin) -> None:
     result = await capture(stack, origin, "/normal.bin")
     assert result["status"] == "completed"

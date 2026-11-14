@@ -6,6 +6,7 @@ import json
 import logging
 import random
 import time
+import weakref
 from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -90,6 +91,10 @@ class QueueManager:
         self.post_action: Callable[[], Coroutine[Any, Any, None]] | None = None
         self.post_seen = False  # The armed queue has started something since it was armed.
         self.post_task: asyncio.Task[None] | None = None
+        # One apply() at a time per download; an entry lives while someone holds its lock.
+        self.apply_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
+            weakref.WeakValueDictionary()
+        )
 
     async def start(self) -> None:
         settings = await run(self.store.settings)
@@ -221,6 +226,15 @@ class QueueManager:
             await self.apply(row, progress)
 
     async def apply(self, row: Download, progress: Progress) -> None:
+        """Record progress. poll() and run_attached() may both report a capture's end; the
+        lock makes the second wait until the first has written it, then do nothing."""
+        lock = self.apply_locks.get(row.id)
+        if lock is None:
+            lock = self.apply_locks[row.id] = asyncio.Lock()
+        async with lock:
+            await self._apply(row, progress)
+
+    async def _apply(self, row: Download, progress: Progress) -> None:
         if progress.status in FINISHED and self.active.pop(row.id, None) is None:
             return  # Another path already recorded the end of this download.
         fields = {

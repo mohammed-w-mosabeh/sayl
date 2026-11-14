@@ -3,6 +3,7 @@
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+- Fixed: a captured download could be reported as active after it had finished, when the queue's poll and the stream handler both saw the end. Progress is written only to unfinished rows, and each download's progress is recorded one update at a time.
 - Phase 6 scheduler: cron schedules start or stop the queue, or set the speed limit (five crontab fields, Sunday as 0 or 7, or six with seconds). Stopping the queue pauses what runs and starts nothing new; captured streams keep going. A start_queue schedule can shut down, suspend (through logind), or run a command once its queue is empty, after 60 s in which it can be cancelled; an empty queue never triggers it.
 - Auto categories: six defaults, matched by extension or MIME type when a download is added, captured, or (for a name only known at the end) completed. A category's folder applies unless the user chose one.
 - Checksums: `checksum` on add (`sha256:HEX`, aria2's `sha-256=HEX`, or bare hex), checked when the download completes and on demand (`POST /downloads/{id}/verify`, `sayl verify`).
