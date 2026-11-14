@@ -125,6 +125,12 @@ function Gate({ primary, children }: { primary: boolean; children: ReactNode }) 
     connect();
   }, [connect]);
   useEffect(connect, [connect]);
+  // On first launch the shell starts sayld in the background; pick up its token once written.
+  useEffect(() => {
+    if (result?.kind !== "no_token") return;
+    const timer = window.setTimeout(connect, 2000);
+    return () => window.clearTimeout(timer);
+  }, [result, connect]);
 
   const connection = result?.kind === "ready" ? result.connection : null;
   const api = useMemo(() => (connection ? makeApi(connection) : null), [connection]);

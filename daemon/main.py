@@ -34,6 +34,8 @@ from daemon.store import Store
 from daemon.store import run as in_thread
 from daemon.vault import Vault, load_key
 from daemon.watchers.service import ClipboardService
+from daemon.ytdlp_overlay import STATE as YTDLP
+from daemon.ytdlp_update import Updater
 
 log = logging.getLogger(__name__)
 
@@ -84,10 +86,14 @@ class Daemon:
             await self.services.clipboard.start()
         if self.services.capture is not None:
             await self.services.capture.start()
+        if self.services.updater is not None:
+            await self.services.updater.start()
 
     async def stop(self) -> None:
         if self.services.capture is not None:
             await self.services.capture.stop()  # First: it restores the system proxy.
+        if self.services.updater is not None:
+            await self.services.updater.stop()
         if self.services.clipboard is not None:
             await self.services.clipboard.stop()
         if self.services.scheduler is not None:
@@ -141,6 +147,12 @@ async def build(paths: Paths, config: Config, env: Mapping[str, str] | None = No
     ytdlp = engines[EngineName.YTDLP]
     assert isinstance(ytdlp, YtDlpEngine)  # noqa: S101 - built just above
     services.outbound = OutboundProxy(aria2, ytdlp, hybrid, services.grabber)
+
+    async def auto_update() -> bool:
+        return (await in_thread(store.settings)).get("ytdlp_auto_update", True) is not False
+
+    services.updater = Updater(paths.data, auto_update, index=config.ytdlp_index)
+    services.outbound.updater = services.updater
     return Daemon(services, aria2, hybrid)
 
 
@@ -149,6 +161,8 @@ async def run(stop: asyncio.Event, paths: Paths | None = None) -> int:
     where = paths or Paths.from_env()
     where.create()
     setup_logging(where.log)
+    if YTDLP.error:
+        log.warning("%s", YTDLP.error)
     config = await asyncio.to_thread(load_config, where)
     daemon = await build(where, config)
     await daemon.start()

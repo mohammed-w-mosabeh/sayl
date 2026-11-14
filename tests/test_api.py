@@ -261,6 +261,9 @@ def test_download_out_lists_every_public_column() -> None:
 
 async def test_info(stack: Stack) -> None:
     info = (await stack.client.get("/info")).json()
+    ytdlp = info.pop("ytdlp")
+    assert ytdlp["active"] == ytdlp["bundled"] != ""
+    assert ytdlp["restart_pending"] is False
     assert info == {
         "version": VERSION,
         "default_dir": str(stack.downloads),

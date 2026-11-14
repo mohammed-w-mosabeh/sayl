@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "linux": {
+      "deb": {
+        "depends": ["aria2", "ffmpeg"],
+        "recommends": ["libnss3-tools", "xclip", "wl-clipboard"],
+        "files": {
+          "/usr/lib/sayl/runtime": "../../build/runtime",
+          "/usr/bin/sayl": "../../packaging/bin/sayl",
+          "/usr/bin/sayld": "../../packaging/bin/sayld",
+          "/usr/lib/systemd/user/sayld.service": "../../packaging/systemd/sayld.service"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/lib/sayl/runtime": "../../build/runtime"
+        }
+      }
+    }
+  }
+}

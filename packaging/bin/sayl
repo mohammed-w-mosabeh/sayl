@@ -1,0 +1,3 @@
+#!/bin/sh
+# Sayl CLI from the bundled runtime (see docs/SPEC.md, Packaging).
+exec /usr/lib/sayl/runtime/bin/python3 -I -m cli.main "$@"

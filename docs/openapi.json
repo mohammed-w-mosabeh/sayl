@@ -865,6 +865,16 @@
      "version": {
       "title": "Version",
       "type": "string"
+     },
+     "ytdlp": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/YtDlpOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
      }
     },
     "required": [
@@ -1361,6 +1371,44 @@
     ],
     "title": "VerifyOut",
     "type": "object"
+   },
+   "YtDlpOut": {
+    "properties": {
+     "active": {
+      "title": "Active",
+      "type": "string"
+     },
+     "bundled": {
+      "title": "Bundled",
+      "type": "string"
+     },
+     "checked_at": {
+      "title": "Checked At",
+      "type": "string"
+     },
+     "error": {
+      "title": "Error",
+      "type": "string"
+     },
+     "restart_pending": {
+      "title": "Restart Pending",
+      "type": "boolean"
+     },
+     "staged": {
+      "title": "Staged",
+      "type": "string"
+     }
+    },
+    "required": [
+     "active",
+     "bundled",
+     "staged",
+     "restart_pending",
+     "checked_at",
+     "error"
+    ],
+    "title": "YtDlpOut",
+    "type": "object"
    }
   },
   "securitySchemes": {
@@ -1372,7 +1420,7 @@
  },
  "info": {
   "title": "sayld",
-  "version": "0.1.0"
+  "version": "1.0.0"
  },
  "openapi": "3.1.0",
  "paths": {
@@ -3147,6 +3195,30 @@
      }
     ],
     "summary": "Statistics"
+   }
+  },
+  "/ytdlp/update": {
+   "post": {
+    "description": "Check PyPI now and stage a newer yt-dlp; it is used from sayld's next start.",
+    "operationId": "ytdlp_update_ytdlp_update_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/YtDlpOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Ytdlp Update"
    }
   }
  }

@@ -1,0 +1,171 @@
+name: Package
+
+# Builds the .deb and the AppImage, checks what is inside, and smoke-tests both on clean
+# systems (docs/SPEC.md, Packaging). Artifacts only: publishing a release is a manual step.
+on:
+  pull_request:
+    paths:
+      - packaging/**
+      - desktop/src-tauri/**
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/package.yml
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # The oldest supported base: bundles built here need glibc 2.35.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - run: >-
+          sudo apt-get update && sudo apt-get install --yes libwebkit2gtk-4.1-dev
+          libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev file
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Python runtime
+        run: uv run --locked python packaging/build_runtime.py
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+          cache-on-failure: true
+      - name: Bundle
+        working-directory: desktop
+        run: pnpm tauri build --verbose --bundles deb,appimage --config src-tauri/tauri.bundle.json
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          # linuxdeploy's bundled strip cannot read some of the runtime's newer shared objects.
+          NO_STRIP: "true"
+      - name: Collect
+        run: |
+          mkdir dist
+          cp desktop/src-tauri/target/release/bundle/deb/*.deb dist/
+          cp desktop/src-tauri/target/release/bundle/appimage/*.AppImage dist/
+          ls -l dist
+          dpkg-deb --info dist/*.deb
+      - name: Check the .deb
+        run: |
+          dpkg-deb -x dist/*.deb "$RUNNER_TEMP/deb"
+          python3 packaging/check_bundle.py deb "$RUNNER_TEMP/deb"
+      - name: Check the AppImage
+        working-directory: ${{ runner.temp }}
+        run: |
+          "$GITHUB_WORKSPACE"/dist/*.AppImage --appimage-extract > /dev/null
+          python3 "$GITHUB_WORKSPACE/packaging/check_bundle.py" appimage squashfs-root
+      - name: The unit verifies against the installed package
+        run: |
+          sudo apt-get install --yes ./dist/*.deb
+          systemd-analyze --user verify /usr/lib/systemd/user/sayld.service
+      - name: sayl service against a real user manager
+        run: |
+          sudo loginctl enable-linger "$USER"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          for _ in $(seq 60); do [ -S "$XDG_RUNTIME_DIR/bus" ] && break; sleep 1; done
+          sayl service install
+          for _ in $(seq 60); do curl -sf -o /dev/null http://127.0.0.1:6971/docs && break; sleep 1; done
+          sayl service status | tee status.txt
+          grep -q "running  yes" status.txt
+          grep -q "starts   /usr/bin/sayld" status.txt
+          sayl ls
+          sayl service install   # Idempotent: nothing to rewrite.
+          test ! -e ~/.config/systemd/user/sayld.service   # The package's unit is used.
+          sayl service uninstall
+          sleep 2
+          if curl -sf -o /dev/null http://127.0.0.1:6971/docs; then echo "sayld still runs"; exit 1; fi
+          journalctl --user -u sayld --no-pager | tail -20
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bundles
+          path: dist
+          retention-days: 14
+
+  smoke-deb:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["debian:13", "ubuntu:24.04", "ubuntu:22.04"]
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: bundles
+          path: dist
+      - name: Install with apt
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: apt-get update && apt-get install --yes ./dist/*.deb
+      - name: Smoke test with the bundled Python
+        run: /usr/lib/sayl/runtime/bin/python3 -I packaging/smoke.py
+
+  smoke-appimage:
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: bundles
+          path: dist
+      # A desktop has the GL libraries an AppImage leaves to the host; a bare runner does not.
+      - run: >-
+          sudo apt-get update && sudo apt-get install --yes aria2 ffmpeg libnss3-tools
+          libegl1 libgl1 libgles2
+      - name: The AppImage runs its CLI
+        run: |
+          chmod +x dist/*.AppImage
+          dist/*.AppImage --appimage-extract-and-run sayl --help
+      - name: Smoke test the extracted AppImage
+        run: |
+          dist/*.AppImage --appimage-extract > /dev/null
+          python3 packaging/smoke.py --sayl "squashfs-root/AppRun sayl" \
+            --sayld "squashfs-root/AppRun sayld" \
+            --python "squashfs-root/usr/lib/sayl/runtime/bin/python3 -I"
+
+  smoke-appimage-debian:
+    # A newer distribution than the build: host programs must not pick up the AppImage's libraries.
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container: debian:13
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: bundles
+          path: dist
+      - name: Host tools and the GL libraries a desktop has
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: >-
+          apt-get update && apt-get install --yes aria2 ffmpeg libnss3-tools
+          libegl1 libgl1 libgles2
+      - name: Smoke test the extracted AppImage
+        run: |
+          chmod +x dist/*.AppImage
+          dist/*.AppImage --appimage-extract > /dev/null
+          squashfs-root/usr/lib/sayl/runtime/bin/python3 -I packaging/smoke.py \
+            --sayl "squashfs-root/AppRun sayl" --sayld "squashfs-root/AppRun sayld" \
+            --python "squashfs-root/usr/lib/sayl/runtime/bin/python3 -I"

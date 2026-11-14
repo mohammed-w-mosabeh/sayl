@@ -608,6 +608,52 @@ export function ignoreList(text: string): string[] {
   return [...new Set(text.split(/[\n,\u060C]+/).map((line) => line.trim().toLowerCase()).filter(Boolean))];
 }
 
+function YtDlp() {
+  const { t } = useI18n();
+  const api = useApi();
+  const client = useQueryClient();
+  const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings });
+  const info = useQuery({ queryKey: ["info"], queryFn: api.info });
+  const save = useMutation({
+    mutationFn: (enabled: boolean) => api.putSettings({ ytdlp_auto_update: enabled }),
+    onSuccess: (data) => client.setQueryData(["settings"], data),
+  });
+  const check = useMutation({
+    mutationFn: api.ytdlpUpdate,
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["info"] }),
+  });
+  const state = check.data ?? info.data?.ytdlp;
+  if (!state) return null;
+  return (
+    <Section title={t("settings.ytdlp")} body={t("settings.ytdlp.body")}>
+      <Toggle
+        label={t("settings.ytdlp.auto")}
+        checked={settings.data?.ytdlp_auto_update !== false}
+        onChange={(checked) => save.mutate(checked)}
+      />
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-sm text-muted-foreground" dir="auto">
+          {t("settings.ytdlp.version", { version: state.active })}
+        </p>
+        <Button id="ytdlp-check" size="sm" variant="secondary" disabled={check.isPending} onClick={() => check.mutate()}>
+          {t("settings.ytdlp.check")}
+        </Button>
+      </div>
+      {state.restart_pending ? (
+        <p className="text-sm">{t("settings.ytdlp.pending", { version: state.staged })}</p>
+      ) : check.isSuccess && !state.error ? (
+        <p className="text-sm text-muted-foreground">{t("settings.ytdlp.latest")}</p>
+      ) : null}
+      {state.error ? (
+        <p className="text-sm text-danger" dir="ltr">
+          {state.error}
+        </p>
+      ) : null}
+      {check.error ? <p className="text-sm text-danger">{check.error.message}</p> : null}
+    </Section>
+  );
+}
+
 function Clipboard() {
   const { t } = useI18n();
   const api = useApi();
@@ -757,6 +803,8 @@ export function SettingsView() {
           <Categories />
 
           <OutboundProxy />
+
+          <YtDlp />
 
           <SiteLogins />
 

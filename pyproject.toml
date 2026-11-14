@@ -1,8 +1,8 @@
 [project]
 name = "sayl"
-version = "0.1.0"
+version = "1.0.0"
 description = "IDM-class download manager for Linux that captures browser downloads without an extension."
-readme = "docs/SPEC.md"
+readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = "MIT"
 dependencies = [
@@ -26,7 +26,7 @@ dependencies = [
 
 [project.scripts]
 sayl = "cli.main:app"
-sayld = "daemon.main:main"
+sayld = "daemon.launch:main"
 
 [dependency-groups]
 dev = [
@@ -69,7 +69,7 @@ select = ["E", "F", "W", "I", "UP", "B", "S", "ASYNC", "C4", "PTH", "RUF", "SIM"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["daemon", "cli"]
+files = ["daemon", "cli", "packaging/build_runtime.py", "packaging/smoke.py", "packaging/check_bundle.py"]
 
 [[tool.mypy.overrides]]
 module = ["yt_dlp", "yt_dlp.*", "Xlib", "Xlib.*", "jeepney", "jeepney.*"]

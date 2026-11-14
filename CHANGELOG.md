@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-11-14
+- Packages: a `.deb` and an AppImage, each with its own Python 3.12 runtime (python-build-standalone, locked dependencies with hashes) in `/usr/lib/sayl/runtime`. The `.deb` adds `sayl`, `sayld`, and the `sayld.service` user unit, and depends on aria2 and ffmpeg; `Sayl.AppImage sayl ...` and `Sayl.AppImage sayld` run the bundled CLI and daemon. Built on Ubuntu 22.04 (glibc 2.35 or newer), contents checked for secrets, and smoke-tested in Debian 13 and Ubuntu 24.04 and 22.04.
+- `sayl service install|uninstall|status|restart`: a systemd user unit tied to `graphical-session.target`, written for the AppImage or a checkout, or the package's own unit; it imports the session variables, and repairs itself when the AppImage moves. The desktop app runs it when sayld does not answer.
+- yt-dlp auto-update: sayld checks PyPI 10 minutes after start and daily, verifies the wheel and its pinned yt-dlp-ejs against the published SHA-256, tests the import in a child process, and uses it from the next start, falling back to the bundled copy if it fails to load. `POST /ytdlp/update`, a `ytdlp` block in `GET /info`, `sayl ytdlp status|update`, and a yt-dlp section in settings (`ytdlp_auto_update`).
+- Bilingual README (English and Arabic), a user guide, and screenshots.
+- The desktop app identifier is now `io.github.mohammed-w-mosabeh.sayl`.
+- Fixed: `python -m cli.main` did nothing; the window now connects on its own once a first-launch sayld writes its token.
 - Site logins: a username and password per host, sealed with the vault key. Sayl sends a login only to its own host; aria2 downloads resolve redirects first so a password never reaches another host, and yt-dlp gets it as the site login. `GET /credentials`, `PUT|DELETE /credentials/{host}`, `sayl creds ls|set|rm` (the password is prompted for or read from stdin), and a Site logins section in settings.
 - History export and import: a versioned JSON file with no headers, cookies, or logins. Import skips known ids and never starts anything. `GET /history/export`, `POST /history/save`, `POST /history/import`, `sayl history export|import`, and buttons in settings.
 - Statistics: downloads by status, bytes per day for 30 days, busiest sites, categories, and average speed. `GET /stats`, `sayl stats`, and a Statistics page.

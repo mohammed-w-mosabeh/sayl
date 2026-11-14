@@ -4,6 +4,7 @@
 //! folders.
 
 mod connection;
+pub mod runtime;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -264,6 +265,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle();
+            runtime::ensure_daemon(connection::read(&connection::config_dir()).port);
             build_tray(handle)?;
             if load_state(handle).drop_target {
                 apply_drop_target(handle, true)?;

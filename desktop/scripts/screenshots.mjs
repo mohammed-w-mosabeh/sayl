@@ -74,6 +74,8 @@ for (const run of RUNS) {
       await page.screenshot({ path: `${out}/settings-schedules-${run.name}.png` });
       await page.locator("#proxy-url").scrollIntoViewIfNeeded();
       await page.screenshot({ path: `${out}/settings-proxy-${run.name}.png` });
+      await page.locator("#ytdlp-check").scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${out}/settings-ytdlp-${run.name}.png` });
       await page.locator("#login-host").scrollIntoViewIfNeeded();
       await page.getByText("files.example.com", { exact: true }).waitFor({ timeout: 10000 });
       await page.screenshot({ path: `${out}/settings-logins-${run.name}.png` });

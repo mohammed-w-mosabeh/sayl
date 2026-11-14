@@ -15,7 +15,9 @@ from rich.table import Table
 
 from cli.client import Client, ClientError
 from cli.doctor import Status, has_failures, run_checks
+from cli.service import Service, ServiceError, default_service, target
 from daemon.batch import pattern_ranges
+from daemon.config import Paths, load_config
 from daemon.credentials import normalize_host
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -746,3 +748,92 @@ def doctor() -> None:
     Console().print(table)
     if has_failures(checks):
         raise typer.Exit(code=1)
+
+
+service_app = typer.Typer(
+    no_args_is_help=True, help="Run sayld as a systemd user service, started at login."
+)
+app.add_typer(service_app, name="service")
+
+
+def _service() -> Service:
+    return default_service(load_config(Paths.from_env()).port)
+
+
+def _service_guarded[T](action: Callable[[], T]) -> T:
+    try:
+        return action()
+    except ServiceError as error:
+        console.print(f"[red]{escape(str(error))}[/red]")
+        raise typer.Exit(1) from error
+
+
+@service_app.command("install")
+def service_install(
+    start: Annotated[bool, typer.Option(help="Start it now as well as at login.")] = True,
+) -> None:
+    """Enable sayld at login and start it. Safe to run again; it repairs a stale unit."""
+    for step in _service_guarded(lambda: _service().install(start=start)):
+        console.print(step, highlight=False)
+
+
+@service_app.command("uninstall")
+def service_uninstall() -> None:
+    """Stop sayld, disable it at login, and remove the unit Sayl wrote."""
+    for step in _service_guarded(lambda: _service().uninstall()):
+        console.print(step, highlight=False)
+
+
+@service_app.command("status")
+def service_status() -> None:
+    """Show whether the unit is enabled and running, and which sayld it starts."""
+    service = _service()
+    enabled, active = _service_guarded(lambda: (service.enabled(), service.active()))
+    console.print(f"enabled  {'yes' if enabled else 'no'}")
+    console.print(f"running  {'yes' if active else 'no'}")
+    console.print(f"starts   {' '.join(target(service.env).command)}", highlight=False)
+
+
+@service_app.command("restart")
+def service_restart() -> None:
+    """Restart sayld, for example to use a yt-dlp the updater staged."""
+    _service_guarded(lambda: _service().restart())
+    console.print("restarted")
+
+
+ytdlp_app = typer.Typer(no_args_is_help=True, help="The yt-dlp sayld uses, and its updates.")
+app.add_typer(ytdlp_app, name="ytdlp")
+
+
+def _print_ytdlp(state: dict[str, Any]) -> None:
+    console.print(f"active   {state['active']}", highlight=False)
+    console.print(f"bundled  {state['bundled']}", highlight=False)
+    if state["restart_pending"]:
+        console.print(
+            f"staged   {state['staged']}: run `sayl service restart` to use it", highlight=False
+        )
+    if state["error"]:
+        console.print(f"[red]{escape(state['error'])}[/red]")
+
+
+@ytdlp_app.command("status")
+def ytdlp_status() -> None:
+    """Show the active, bundled, and staged yt-dlp versions."""
+    info: dict[str, Any] = _guarded(lambda: _client().call("GET", "/info"))
+    if not info.get("ytdlp"):
+        raise _fail(ClientError("this sayld does not report yt-dlp"))
+    _print_ytdlp(info["ytdlp"])
+
+
+@ytdlp_app.command("update")
+def ytdlp_update() -> None:
+    """Check PyPI now; a newer yt-dlp is verified and used from sayld's next start."""
+    state: dict[str, Any] = _guarded(lambda: _client().call("POST", "/ytdlp/update"))
+    if not state["restart_pending"] and not state["error"]:
+        console.print(f"yt-dlp {state['active']} is the latest", highlight=False)
+        return
+    _print_ytdlp(state)
+
+
+if __name__ == "__main__":
+    app(prog_name="sayl")

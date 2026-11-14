@@ -64,6 +64,7 @@ class Config:
     capture_spool_max_bytes: int = DEFAULT_SPOOL_MAX_BYTES
     bt_seed_ratio: float = 1.0  # A finished torrent seeds until this ratio or bt_seed_minutes.
     bt_seed_minutes: int = 60
+    ytdlp_index: str = "https://pypi.org/pypi"  # Where the yt-dlp updater looks.
     # Extra origins allowed to call the API, for `pnpm tauri dev` only. Loopback HTTP only.
     dev_origins: tuple[str, ...] = ()
 

@@ -37,7 +37,7 @@ export function DaemonScreen(props: Props) {
           {t(offline ? "daemon.offline.body" : "daemon.no_token.body")}
         </p>
         <code dir="ltr" className="rounded-md bg-muted px-3 py-2 font-mono text-sm">
-          sayld
+          sayl service install
         </code>
         <Button variant="primary" onClick={props.onRetry}>
           {t("action.retry")}

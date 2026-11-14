@@ -24,6 +24,7 @@ from daemon.config import Paths
 from daemon.db import make_engine
 from daemon.models import Download, Status
 from daemon.store import Store
+from daemon.ytdlp_overlay import bundled_version
 from tests.origin import SHA256, Origin
 from tests.stack import free_port
 
@@ -75,10 +76,11 @@ def sayld(tmp_path_factory: pytest.TempPathFactory, origin: Origin) -> Iterator[
     config.mkdir(parents=True)
     (config / "config.toml").write_text(
         f'port = {port}\ncapture_port = {free_port()}\ndownload_dir = "{out}"\n'
+        'ytdlp_index = "http://127.0.0.1:9"\n'  # Nothing listens: updates fail, offline.
     )
     env = {key: value for key, value in os.environ.items() if not key.startswith("XDG_")}
     process = subprocess.Popen(
-        [sys.executable, "-c", "from daemon.main import main; main()"],
+        [sys.executable, "-m", "daemon.launch"],  # What the sayld entry point runs.
         env={**env, "HOME": str(home)},
     )
     target = Sayld(home, out, origin, port)
@@ -341,3 +343,9 @@ def test_history_export_import_and_stats(sayld: Sayld, tmp_path: Path) -> None:
     assert "cannot read" in sayl("history", "import", str(broken), code=1)
     assert "last 30 days" in sayl("stats")
     assert len(as_json("stats")["per_day"]) == 30
+
+
+def test_ytdlp_status_and_a_failed_update(sayld: Sayld) -> None:
+    status = sayl("ytdlp", "status")
+    assert f"active   {bundled_version()}" in status
+    assert "update failed" in sayl("ytdlp", "update")

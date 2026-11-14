@@ -74,7 +74,7 @@ Claude Code updates these checkboxes at the end of each phase. Acceptance criter
 - [x] Statistics
 
 ## Phase 7 — Packaging  (tag `v1.0.0`)
-- [ ] systemd user unit
-- [ ] AppImage + .deb
-- [ ] yt-dlp auto-update
-- [ ] Bilingual README (English + Arabic), user guide, screenshots
+- [x] systemd user unit
+- [x] AppImage + .deb
+- [x] yt-dlp auto-update
+- [x] Bilingual README (English + Arabic), user guide, screenshots

@@ -9,6 +9,7 @@ from daemon.engines.hybrid import HybridEngine
 from daemon.engines.ytdlp import YtDlpEngine
 from daemon.grabber import USER_AGENT, Grabber
 from daemon.proxy import ProxyUrl, Socks5Bridge, parse
+from daemon.ytdlp_update import Updater
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class OutboundProxy:
         self.grabber = grabber
         self.current: ProxyUrl | None = None
         self.bridge: Socks5Bridge | None = None
+        self.updater: Updater | None = None
         # Replaced clients may still carry a running download; they close when sayld stops.
         self.retired: list[httpx.AsyncClient] = []
 
@@ -49,6 +51,8 @@ class OutboundProxy:
             await old_bridge.stop()
         url = proxy.url() if proxy is not None else None
         self.ytdlp.proxy = url or ""
+        if self.updater is not None:
+            self.updater.proxy = url
         self._replace_clients(url)
         self.current = proxy
         log.info("outbound proxy: %s", proxy or "direct")

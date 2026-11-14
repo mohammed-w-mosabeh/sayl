@@ -1,0 +1,17 @@
+[Unit]
+Description=Sayl download daemon
+# The session exports DISPLAY, WAYLAND_DISPLAY, and the bus before it reaches this target.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=exec
+ExecStart="/usr/bin/sayld"
+Restart=on-failure
+RestartSec=5
+# sayld stops aria2c and sayl-capture itself and restores the system proxy first.
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=graphical-session.target

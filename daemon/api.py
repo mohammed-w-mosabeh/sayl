@@ -45,8 +45,9 @@ from daemon.scheduler import Scheduler, validate
 from daemon.store import Store, run
 from daemon.vault import Vault
 from daemon.watchers.service import ClipboardService
+from daemon.ytdlp_update import Updater
 
-VERSION = "0.1.0"
+VERSION = "1.0.0"
 APP_ORIGINS = frozenset({"tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"})
 bearer = HTTPBearer(auto_error=False)
 
@@ -356,12 +357,22 @@ class StatsOut(BaseModel):
     average_speed: int
 
 
+class YtDlpOut(BaseModel):
+    active: str
+    bundled: str
+    staged: str  # The version staged for sayld's next start; may equal active.
+    restart_pending: bool
+    checked_at: str  # ISO 8601 UTC of the last check by this sayld, or "".
+    error: str
+
+
 class InfoOut(BaseModel):
     version: str
     default_dir: str
     max_concurrent: int
     # off, unavailable, or the watcher in use: wayland, xwayland_poll, x11, or poll.
     clipboard: str
+    ytdlp: YtDlpOut | None = None
 
 
 @dataclass
@@ -379,6 +390,7 @@ class Services:
     scheduler: Scheduler | None = None
     grabber: Grabber | None = None
     outbound: OutboundProxy | None = None
+    updater: Updater | None = None
 
 
 def checksum_fields(value: str) -> dict[str, str]:
@@ -731,7 +743,15 @@ def create_app(services: Services) -> FastAPI:
             default_dir=services.default_dir,
             max_concurrent=services.config.max_concurrent,
             clipboard=services.clipboard.state if services.clipboard else "off",
+            ytdlp=YtDlpOut(**services.updater.status().__dict__) if services.updater else None,
         )
+
+    @app.post("/ytdlp/update", dependencies=auth)
+    async def ytdlp_update() -> YtDlpOut:
+        """Check PyPI now and stage a newer yt-dlp; it is used from sayld's next start."""
+        if services.updater is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "the yt-dlp updater is not running")
+        return YtDlpOut(**(await services.updater.check()).__dict__)
 
     @app.get("/settings", dependencies=auth)
     async def get_settings() -> dict[str, Any]:

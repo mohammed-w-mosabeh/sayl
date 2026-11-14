@@ -160,6 +160,7 @@ def main() -> int:
     (config / "config.toml").write_text(
         f'port = {DAEMON_PORT}\ndev_origins = ["http://localhost:{WEB_PORT}"]\n'
         f'download_dir = "{state / "out"}"\n'
+        'ytdlp_index = "http://127.0.0.1:9"\n'  # Offline: never ask PyPI from a UI check.
     )
     # No display or session bus: the daemon must not watch the real clipboard or notify.
     hidden = {"DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE", "DBUS_SESSION_BUS_ADDRESS"}
@@ -171,7 +172,7 @@ def main() -> int:
     }
     servers = [serve(files, FILES_PORT), serve(EXPORT, WEB_PORT)]
     daemon = subprocess.Popen(
-        [sys.executable, "-c", "from daemon.main import main; main()"],
+        [sys.executable, "-m", "daemon.launch"],
         env=env,
         cwd=ROOT,
         stdout=subprocess.DEVNULL,

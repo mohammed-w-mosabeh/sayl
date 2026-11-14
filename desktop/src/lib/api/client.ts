@@ -124,5 +124,6 @@ export function makeApi(connection: Connection, fetcher: typeof fetch = globalTh
     importHistory: (document: Record<string, unknown>) =>
       unwrap(client.POST("/history/import", { body: document })),
     stats: () => unwrap(client.GET("/stats")),
+    ytdlpUpdate: () => unwrap(client.POST("/ytdlp/update")),
   };
 }

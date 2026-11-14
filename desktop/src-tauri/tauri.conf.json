@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Sayl",
-  "version": "0.1.0",
-  "identifier": "io.github.sayl.desktop",
+  "version": "1.0.0",
+  "identifier": "io.github.mohammed-w-mosabeh.sayl",
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3210",
@@ -36,7 +36,7 @@
   "bundle": {
     "active": true,
     "targets": ["deb", "appimage"],
-    "category": "Network",
+    "category": "Utility",
     "shortDescription": "Download manager",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png"]
   }

@@ -1,0 +1,3 @@
+#!/bin/sh
+# sayld from the bundled runtime; systemd starts it through sayld.service.
+exec /usr/lib/sayl/runtime/bin/python3 -I -m daemon.launch "$@"

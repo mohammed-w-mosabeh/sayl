@@ -657,6 +657,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ytdlp/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ytdlp Update
+         * @description Check PyPI now and stage a newer yt-dlp; it is used from sayld's next start.
+         */
+        post: operations["ytdlp_update_ytdlp_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1131,6 +1151,7 @@ export interface components {
             max_concurrent: number;
             /** Version */
             version: string;
+            ytdlp?: components["schemas"]["YtDlpOut"] | null;
         };
         /** MediaReport */
         MediaReport: {
@@ -1328,6 +1349,21 @@ export interface components {
             expected: string;
             /** Ok */
             ok: boolean;
+        };
+        /** YtDlpOut */
+        YtDlpOut: {
+            /** Active */
+            active: string;
+            /** Bundled */
+            bundled: string;
+            /** Checked At */
+            checked_at: string;
+            /** Error */
+            error: string;
+            /** Restart Pending */
+            restart_pending: boolean;
+            /** Staged */
+            staged: string;
         };
     };
     responses: never;
@@ -2676,6 +2712,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatsOut"];
+                };
+            };
+        };
+    };
+    ytdlp_update_ytdlp_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["YtDlpOut"];
                 };
             };
         };

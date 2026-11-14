@@ -51,4 +51,7 @@ cd desktop && pnpm lint && pnpm typecheck && pnpm test
 cd desktop && pnpm api                        # regenerate the TypeScript client after exporting the OpenAPI schema
 cd desktop && pnpm build && cd .. && uv run python desktop/scripts/ui_check.py   # UI in en/ar/dark against a real sayld (PLAYWRIGHT_CORE, CHROME)
 cd desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test   # needs Rust + libwebkit2gtk-4.1-dev; CI runs it
+uv run python packaging/build_runtime.py     # bundled CPython 3.12 + locked deps in build/runtime (CI builds the bundles)
+python3 packaging/smoke.py --sayl "build/runtime/bin/python3 -I -m cli.main" --sayld "build/runtime/bin/python3 -I -m daemon.launch" --python "build/runtime/bin/python3 -I"   # smoke-test an installed tree
+uv run sayl service install                  # systemd user unit for this sayld (status|restart|uninstall)
 ```
