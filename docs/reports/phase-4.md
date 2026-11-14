@@ -6,7 +6,7 @@ Date: 2026-11-03.
 
 The daemon watches the clipboard and offers each new link in a desktop notification with **Download** and **Ignore this site** buttons. The daemon sends the notification itself over D-Bus, so this works with the desktop app closed.
 
-**Result:** all Phase 4 acceptance criteria are met. A copied link is offered in under 1 s on X11 and in 0.32 s on a real GNOME Wayland session. The wlroots Wayland check runs in CI under headless sway.
+**Result:** all Phase 4 acceptance criteria are met. A copied link is offered in under 1 s on X11 and in 0.32 s on a real GNOME Wayland session. The Wayland data-control check runs in CI under headless sway (wlroots) and, since 2026-11-14, a virtual KWin 5.27 (KDE).
 
 ## Watchers
 
@@ -39,6 +39,7 @@ Content is read only after a change, and only after checking its types. Anything
 | GNOME Wayland → XWayland poll | 2 s | 0.32 s, three of three | This machine's real session: `wl-copy`, then detection by the poll |
 | XWayland poll, any X server | 2 s | under 2 s (test asserts) | Xvfb |
 | wlroots Wayland, data-control | 1 s | test asserts under 1 s | Headless sway in CI; sway is not installed here |
+| KDE Wayland, data-control | 1 s | test asserts under 1 s | Virtual KWin 5.27 in CI (`kwin_wayland --virtual`); added 2026-11-14 |
 | Copy → notification → Download → file complete | — | notification under 1 s; file correct | Xvfb, private D-Bus, a fake notification server, and a real `sayld` |
 
 The real GNOME measurement saved the clipboard first (text only), copied three test links, then restored the original content and confirmed it matched.

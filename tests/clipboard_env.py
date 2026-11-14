@@ -107,6 +107,46 @@ def headless_sway() -> Iterator[dict[str, str]]:
 
 
 @contextmanager
+def headless_kwin() -> Iterator[dict[str, str]]:
+    """A virtual KWin (KDE's compositor), which has data-control. Yields its environment."""
+    need("kwin_wayland", "wl-paste", "wl-copy")
+    runtime = Path(tempfile.mkdtemp(prefix="sayl-kwin-"))
+    runtime.chmod(0o700)
+    with private_bus() as bus:
+        env = {
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": str(runtime),
+            "XDG_RUNTIME_DIR": str(runtime),
+            "DBUS_SESSION_BUS_ADDRESS": bus,
+            "KWIN_COMPOSE": "Q",  # QPainter: no GPU on a CI runner.
+            "QT_QPA_PLATFORM": "offscreen",
+        }
+        log = runtime / "kwin.log"
+        with log.open("wb") as output:
+            process = subprocess.Popen(
+                ["kwin_wayland", "--virtual", "--no-lockscreen", "--socket", "wayland-sayl"],  # noqa: S607
+                env=env,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+            )
+        try:
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                if (runtime / "wayland-sayl").exists():
+                    time.sleep(1)  # The socket appears before KWin serves globals.
+                    yield {**env, "WAYLAND_DISPLAY": "wayland-sayl", "XDG_SESSION_TYPE": "wayland"}
+                    return
+                if process.poll() is not None:
+                    unavailable(f"kwin_wayland would not start: {log.read_text()[-2000:]}")
+                time.sleep(0.1)
+            unavailable(f"kwin_wayland did not create a socket: {log.read_text()[-2000:]}")
+        finally:
+            process.terminate()
+            process.wait(10)
+            shutil.rmtree(runtime, ignore_errors=True)
+
+
+@contextmanager
 def private_bus() -> Iterator[str]:
     """A private session bus; yields its address."""
     need("dbus-daemon")

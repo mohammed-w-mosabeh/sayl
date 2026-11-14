@@ -1,7 +1,8 @@
 import asyncio
 import os
 import time
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import AbstractContextManager
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ from daemon.watchers.xwayland_poll import PollWatcher
 from tests.clipboard_env import (
     FakeNotifications,
     copy_x11,
+    headless_kwin,
     headless_sway,
     private_bus,
     xvfb,
@@ -343,8 +345,11 @@ async def test_x11_without_a_server_is_unavailable() -> None:
         await first_change(PollWatcher({}))
 
 
-async def test_wayland_data_control_sees_a_copy_within_a_second() -> None:
-    with headless_sway() as env:
+@pytest.mark.parametrize("compositor", [headless_sway, headless_kwin], ids=["wlroots", "kde"])
+async def test_wayland_data_control_sees_a_copy_within_a_second(
+    compositor: Callable[[], AbstractContextManager[dict[str, str]]],
+) -> None:
+    with compositor() as env:
         watcher = WaylandWatcher(env)
         waiting = asyncio.create_task(first_change(watcher))
         await asyncio.sleep(0.5)
