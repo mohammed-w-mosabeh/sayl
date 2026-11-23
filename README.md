@@ -39,7 +39,7 @@ newer). Download the `.deb` or the AppImage from the Releases page of this repos
 **Debian, Ubuntu, and derivatives**
 
 ```bash
-sudo apt install ./sayl_*_amd64.deb
+sudo apt install ./Sayl_*_amd64.deb
 ```
 
 apt installs `aria2` and `ffmpeg` with it.
@@ -167,7 +167,7 @@ MIT. See [LICENSE](LICENSE).
 <div dir="ltr">
 
 ```bash
-sudo apt install ./sayl_*_amd64.deb
+sudo apt install ./Sayl_*_amd64.deb
 ```
 
 </div>
