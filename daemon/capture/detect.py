@@ -37,31 +37,15 @@ _MANIFEST_TYPES = frozenset(
     {"application/dash+xml", "application/vnd.apple.mpegurl", "application/x-mpegurl"}
 )
 
-# Never intercepted: TLS passes through untouched. Hosts include their subdomains; `*` globs.
+# Never intercepted: mitmproxy reads the SNI from the ClientHello and splices the raw TCP stream
+# to the real server, so the client sees the real certificate. Hosts include their subdomains.
+# Deliberately tiny: every host here is a host Sayl cannot capture downloads from. More hosts are
+# opt-in, through `capture_passthrough` in config.toml or the `capture_bypass` setting, or added
+# automatically when a browser rejects Sayl's CA for one host.
 DEFAULT_BYPASS = (
-    # Sign-in and payment pages often pin certificates, and gain nothing from capture.
-    "accounts.google.com",
-    "login.microsoftonline.com",
-    "login.live.com",
-    "appleid.apple.com",
-    "idmsa.apple.com",
-    "github.com/login",
-    "paypal.com",
-    "stripe.com",
-    "*bank*",
-    # Browser and OS updates verify their own downloads and must never be delayed.
-    "update.googleapis.com",
-    "dl.google.com",
-    "aus5.mozilla.org",
-    "download.mozilla.org",
-    "deb.debian.org",
-    "security.debian.org",
-    "archive.ubuntu.com",
-    "security.ubuntu.com",
-    "download.fedoraproject.org",
-    "dl.flathub.org",
-    "api.snapcraft.io",
-)  # Loopback needs no entry: the system proxy setting already excludes it.
+    "anthropic.com",  # Also *.anthropic.com: API clients pin to the public roots.
+    "claude.ai",  # Also *.claude.ai.
+)  # Loopback needs no entry: the PAC file sends it DIRECT and never reaches the proxy.
 
 
 @dataclass(frozen=True)

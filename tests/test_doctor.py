@@ -103,6 +103,7 @@ def test_tool_version_handles_missing_binary() -> None:
 def test_cli_exit_codes(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = CliRunner()
     ok = doctor.Check("aria2c", Status.OK, "1.2.3")
+    monkeypatch.setattr("cli.main.capture_checks", lambda **_: [])
     monkeypatch.setattr("cli.main.run_checks", lambda: [ok])
     assert runner.invoke(app, ["doctor"]).exit_code == 0
     bad = doctor.Check("aria2c", Status.FAIL, "missing", "sudo apt install aria2")

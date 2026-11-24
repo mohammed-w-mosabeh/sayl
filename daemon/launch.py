@@ -13,6 +13,10 @@ def main() -> None:
         # without it, so a PYTHONHOME set by an AppImage's AppRun would break them.
         for name in ("PYTHONHOME", "PYTHONPATH"):
             os.environ.pop(name, None)
+    if sys.argv[1:] == ["--restore-proxy"]:  # systemd's ExecStopPost, after any exit.
+        from daemon.capture.sysproxy import main as restore
+
+        raise SystemExit(restore(["restore"]))
     ytdlp_overlay.activate(Paths.from_env().data)
     from daemon.main import main as serve
 

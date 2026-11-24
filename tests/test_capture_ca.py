@@ -55,3 +55,28 @@ def test_remove(tmp_path: Path) -> None:
     ca.remove(tmp_path)
     assert ca.load(tmp_path) is None
     assert not list(tmp_path.glob("mitmproxy-*"))
+
+
+def test_harden_repairs_loose_modes(tmp_path: Path) -> None:
+    directory = tmp_path / "ca"
+    ca.create(directory)
+    (directory / ca.KEY_FILE).chmod(0o644)
+    (directory / "installed.json").write_text("{}")
+    (directory / "installed.json").chmod(0o664)
+    directory.chmod(0o755)
+    ca.ensure(directory)  # Every start goes through here.
+    assert directory.stat().st_mode & 0o777 == 0o700
+    assert ca.private_key_mode(directory) == 0o600
+    assert (directory / "installed.json").stat().st_mode & 0o777 == 0o600
+    assert (directory / ca.CERT_FILE).stat().st_mode & 0o777 == 0o644  # Public on purpose.
+    assert ca.harden(directory) == []
+
+
+def test_harden_refuses_a_symlinked_key(tmp_path: Path) -> None:
+    directory = tmp_path / "ca"
+    ca.create(directory)
+    elsewhere = tmp_path / "other.pem"
+    (directory / ca.KEY_FILE).rename(elsewhere)
+    (directory / ca.KEY_FILE).symlink_to(elsewhere)
+    with pytest.raises(PermissionError):
+        ca.harden(directory)

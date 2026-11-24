@@ -111,6 +111,24 @@ sayl capture uninstall    # all of the above, and remove the certificate everywh
 - `enable --no-system-proxy` starts the proxy without touching the desktop setting, if you
   prefer to point a browser at `127.0.0.1:6972` yourself.
 
+**Only browsers use it.** On GNOME, Sayl sets the desktop proxy to *automatic* with a small
+proxy auto-config (PAC) file that sayld serves. Browsers follow it; terminals, `curl`, `git`,
+package managers, and API clients do not, because GNOME Terminal exports `https_proxy` only in
+*manual* mode. If the proxy stops, the PAC file sends browsers direct, so browsing never breaks.
+Sayl adds no firewall (nftables/iptables) rules and no hosts entries. When sayld stops, crashes, or
+is killed, the previous setting comes back (on stop, on the next start, or from the systemd unit).
+If a terminal opened while an older Sayl used manual mode still has `https_proxy` set, open a new
+terminal.
+
+**Passthrough hosts.** A passthrough host is never decrypted: the proxy reads the host name from
+the TLS hello and forwards the encrypted connection to the real server unchanged, so clients see
+the real certificate. Built in: `anthropic.com` and `claude.ai`, with their subdomains. Nothing
+else, so downloads from GitHub, PyPI, npm, Docker and the rest are still captured. Add more in
+`capture_passthrough` in `config.toml` (an entry covers its subdomains; `*` globs), or in
+Settings. A site that refuses Sayl's certificate with an "unknown CA" error is added for you,
+once, with a notification. `sayl doctor` checks the proxy, the certificate, and that
+`api.anthropic.com` passes through untouched.
+
 A captured download keeps the browser's own connection, so links that work only once still
 complete. When a server allows it, Sayl adds more connections to speed the rest up.
 
@@ -316,6 +334,7 @@ Settings you change from the window or with `sayl config <key> <value>`:
 | --- | --- | --- |
 | `port` | `6971` | API port on 127.0.0.1 |
 | `capture_port` | `6972` | Capture proxy port on 127.0.0.1 |
+| `capture_passthrough` | `[]` | Extra hosts never intercepted, e.g. `["github.com", "*.corp.test"]` |
 | `download_dir` | Downloads folder | Default folder for new downloads |
 | `max_concurrent` | `3` | Downloads running at once |
 | `max_retries` | `5` | Retries for a failed download |

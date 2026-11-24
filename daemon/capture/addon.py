@@ -38,6 +38,7 @@ DRM_MARKERS = (
     b"cenc:default_KID",
 )
 TLS_FAILURE_WINDOW = 60.0
+CA_ALERTS = ("unknown ca", "bad certificate", "certificate unknown")
 TLS_FAILURE_LIMIT = 3  # More distinct hosts than this per minute means "CA not trusted".
 
 
@@ -139,13 +140,15 @@ class Capture:
         token: str,
         extractor: Callable[[str], str] | None = None,
         ca_trusted: bool = True,
+        passthrough: tuple[str, ...] = (),
     ) -> None:
         self.client = client
         self.socket_url = socket_url
         self.token = token
         self.extractor = extractor
         self.ca_trusted = ca_trusted
-        self.bypass: tuple[str, ...] = detect.DEFAULT_BYPASS
+        self.passthrough = (*detect.DEFAULT_BYPASS, *passthrough)  # Built in plus config.toml.
+        self.bypass: tuple[str, ...] = self.passthrough
         self.threshold = detect.DEFAULT_THRESHOLD
         self.uploads: dict[str, Upload] = {}  # Download id -> upload.
         self.by_flow: dict[str, Upload] = {}
@@ -186,7 +189,7 @@ class Capture:
     def apply(self, settings: Mapping[str, Any]) -> None:
         extra = settings.get("capture_bypass", [])
         user = tuple(str(item) for item in extra) if isinstance(extra, list) else ()
-        self.bypass = (*detect.DEFAULT_BYPASS, *user)
+        self.bypass = (*self.passthrough, *user)
         threshold = settings.get("capture_threshold")
         if isinstance(threshold, int) and threshold > 0:
             self.threshold = threshold
@@ -283,9 +286,13 @@ class Capture:
             await upload.closed.wait()
 
     def tls_failed_client(self, data: tls.TlsData) -> None:
-        """The browser refused our certificate: pinning, or the CA is not trusted there."""
+        """The browser refused our certificate: pinning, or the CA is not trusted there.
+
+        Only an explicit "unknown CA" or "bad certificate" alert counts. A client that just hangs
+        up mid-handshake, or fails for any other reason, says nothing about our CA.
+        """
         host = data.context.client.sni
-        if not host or not self.ca_trusted:
+        if not host or not self.ca_trusted or not rejected_ca(data.conn.error or ""):
             return
         loop = asyncio.get_running_loop()
         now = loop.time()
@@ -363,6 +370,11 @@ class Capture:
     async def _post(self, path: str, body: Mapping[str, Any]) -> None:
         with contextlib.suppress(httpx.HTTPError):
             await self.client.post(path, json=body)
+
+
+def rejected_ca(error: str) -> bool:
+    """Does mitmproxy's handshake error carry a client alert refusing our certificate?"""
+    return any(alert in error.lower() for alert in CA_ALERTS)
 
 
 def host_of(url: str) -> str:

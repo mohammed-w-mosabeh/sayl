@@ -1,22 +1,34 @@
 """Point the desktop's system proxy at sayl-capture, and put it back exactly as it was.
 
-GNOME-family desktops: `gsettings org.gnome.system.proxy`. KDE: `kioslaverc` via kwriteconfig.
-Anything else: the environment variables to set, printed for the person to apply.
-Previous values are saved as the tools print them and written back unchanged.
+GNOME-family desktops: `gsettings org.gnome.system.proxy` in `auto` mode with sayld's PAC file.
+Never `manual` mode: gnome-terminal turns manual mode into http_proxy/https_proxy variables for
+every shell, which sends curl, git, package managers and API clients through a TLS-intercepting
+proxy they do not trust. In auto mode terminals export nothing, browsers follow the PAC file,
+and the PAC file falls back to DIRECT whenever sayl-capture is not answering.
+KDE: `kioslaverc` via kwriteconfig (Konsole exports no proxy variables).
+Anything else: how to point a browser at the PAC file, printed for the person to apply.
+Previous values are saved as the tools print them, with their key names, and written back
+unchanged. `python -m daemon.capture.sysproxy restore` does that from outside sayld.
 """
 
 import json
+import os
 import shutil
 import subprocess
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
 SAVED_FILE = "proxy-saved.json"
-LOOPBACK = ("localhost", "127.0.0.0/8", "::1")
 
 GNOME_KEYS = (
+    ("org.gnome.system.proxy", "mode"),
+    ("org.gnome.system.proxy", "autoconfig-url"),
+)
+# What Sayl 1.0 saved, in this order, before it stored key names: still restorable.
+LEGACY_GNOME_KEYS = (
     ("org.gnome.system.proxy", "mode"),
     ("org.gnome.system.proxy", "ignore-hosts"),
     ("org.gnome.system.proxy", "use-same-proxy"),
@@ -105,22 +117,22 @@ class SystemProxy:
         version = "6" if self.which("kwriteconfig6") else "5"
         return f"kwriteconfig{version}", f"kreadconfig{version}"
 
-    def enable(self, port: int) -> Result:
-        """Save the current settings once, then point every protocol at the proxy."""
+    def enable(self, port: int, pac_url: str) -> Result:
+        """Save the current settings once, then point browsers at the proxy."""
         kind = desktop(self.env, self.which)
         if kind is Desktop.OTHER:
-            proxy = f"http://127.0.0.1:{port}"
             return Result(
                 kind,
                 False,
-                f"Set these in your session: http_proxy={proxy} https_proxy={proxy} "
-                f"no_proxy={','.join(LOOPBACK)}",
+                f"Set your browser's automatic proxy configuration URL to {pac_url} "
+                f"(or its proxy to 127.0.0.1:{port}). Do not export https_proxy in your session: "
+                "command-line tools do not trust Sayl's CA.",
             )
         if not self.saved_file.exists():  # A second enable must not save our own values.
             self._save(kind)
         try:
             if kind is Desktop.GNOME:
-                self._gnome_enable(port)
+                self._gnome_enable(pac_url)
             else:
                 self._kde_enable(port)
         except OSError as error:
@@ -135,7 +147,8 @@ class SystemProxy:
         saved = json.loads(self.saved_file.read_text())
         try:
             if saved["desktop"] == Desktop.GNOME:
-                for (schema, key), value in zip(GNOME_KEYS, saved["values"], strict=True):
+                keys = [tuple(pair) for pair in saved.get("keys", LEGACY_GNOME_KEYS)]
+                for (schema, key), value in zip(keys, saved["values"], strict=True):
                     self._check(self._call("gsettings", "set", schema, key, value))
             else:
                 write, _ = self._kde_tools()
@@ -172,17 +185,31 @@ class SystemProxy:
                 args = ["--file", "kioslaverc", "--group", KDE_GROUP, "--key", key]
                 result = self._call(read, *args)
                 values.append(result.stdout.strip() if result.stdout.strip() else None)
+        keys = GNOME_KEYS if kind is Desktop.GNOME else KDE_KEYS
         self.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.saved_file.write_text(json.dumps({"desktop": kind, "values": values}))
+        content = json.dumps({"desktop": kind, "keys": keys, "values": values}).encode()
+        descriptor = os.open(self.saved_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(content)
 
-    def _gnome_enable(self, port: int) -> None:
-        ignore = parse_gvariant_list(self._check(self._call("gsettings", "get", *GNOME_KEYS[1])))
-        merged = list(dict.fromkeys([*ignore, *LOOPBACK]))
-        for schema in ("org.gnome.system.proxy.http", "org.gnome.system.proxy.https"):
-            self._check(self._call("gsettings", "set", schema, "host", "127.0.0.1"))
-            self._check(self._call("gsettings", "set", schema, "port", str(port)))
-        self._check(self._call("gsettings", "set", *GNOME_KEYS[1], gvariant_list(merged)))
-        self._check(self._call("gsettings", "set", "org.gnome.system.proxy", "mode", "manual"))
+    def _gnome_enable(self, pac_url: str) -> None:
+        """Auto mode with our PAC file. The manual-mode keys stay as they were."""
+        schema = "org.gnome.system.proxy"
+        self._check(self._call("gsettings", "set", schema, "autoconfig-url", pac_url))
+        self._check(self._call("gsettings", "set", schema, "mode", "auto"))
+
+    def gnome_mode(self) -> tuple[str, str] | None:
+        """The live GNOME proxy mode and PAC URL, for `sayl doctor`. None off GNOME."""
+        if desktop(self.env, self.which) is not Desktop.GNOME:
+            return None
+        try:
+            mode = self._check(self._call("gsettings", "get", "org.gnome.system.proxy", "mode"))
+            url = self._check(
+                self._call("gsettings", "get", "org.gnome.system.proxy", "autoconfig-url")
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return mode.strip("'"), url.strip("'")
 
     def _kde_enable(self, port: int) -> None:
         write, _ = self._kde_tools()
@@ -190,7 +217,7 @@ class SystemProxy:
             "ProxyType": "1",
             "httpProxy": f"http://127.0.0.1 {port}",
             "httpsProxy": f"http://127.0.0.1 {port}",
-            "NoProxyFor": ",".join(LOOPBACK),
+            "NoProxyFor": "localhost,127.0.0.0/8,::1",
         }
         for key, value in values.items():
             args = ["--file", "kioslaverc", "--group", KDE_GROUP, "--key", key, value]
@@ -204,3 +231,19 @@ class SystemProxy:
                 "dbus-send", "--type=signal", "/KIO/Scheduler",
                 "org.kde.KIO.Scheduler.reparseSlaveConfiguration", "string:",
             )  # fmt: skip
+
+
+def main(argv: Sequence[str] = sys.argv[1:]) -> int:
+    """`restore`: put back what a crashed sayld left. systemd runs it after sayld stops."""
+    from daemon.config import Paths
+
+    if list(argv) != ["restore"]:
+        sys.stderr.write("usage: python -m daemon.capture.sysproxy restore\n")
+        return 2
+    result = SystemProxy(Paths.from_env().data / "capture", os.environ).disable()
+    sys.stdout.write(("restored" if result.applied else result.detail) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

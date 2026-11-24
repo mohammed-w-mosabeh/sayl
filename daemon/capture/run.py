@@ -54,12 +54,14 @@ async def watch_parent(shutdown: Callable[[], None], interval: float = 1.0) -> N
 async def serve(daemon_port: int | None = None, port: int | None = None) -> int:
     """sayld passes both ports, so a daemon started with overrides is still found."""
     mitm_adapter.install()
+    os.umask(0o077)  # Whatever mitmproxy writes into the CA directory stays private.
     paths = Paths.from_env()
     setup_logging(paths.data / "capture.log")
     config = load_config(paths)
     daemon_port = daemon_port or config.port
     port = port or config.capture_port
     token = paths.token.read_text().strip()
+    passthrough = config.capture_passthrough
     client = httpx.AsyncClient(
         base_url=f"http://127.0.0.1:{daemon_port}",
         headers={"Authorization": f"Bearer {token}"},
@@ -67,7 +69,7 @@ async def serve(daemon_port: int | None = None, port: int | None = None) -> int:
         trust_env=False,  # An http_proxy variable must never route us through ourselves.
     )
     master = DumpMaster(
-        options(port, str(ca_dir(paths.data)), detect.DEFAULT_BYPASS),
+        options(port, str(ca_dir(paths.data)), (*detect.DEFAULT_BYPASS, *passthrough)),
         with_termlog=False,
         with_dumper=False,
     )
@@ -77,6 +79,7 @@ async def serve(daemon_port: int | None = None, port: int | None = None) -> int:
         token,
         extractor=supported_extractor,
         ca_trusted=os.environ.get(TRUSTED_ENV) == "1",
+        passthrough=passthrough,
     )
     addon.on_settings = lambda _: master.options.update(  # type: ignore[no-untyped-call]
         ignore_hosts=detect.ignore_hosts(addon.bypass)

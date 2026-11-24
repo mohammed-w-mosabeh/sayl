@@ -12,6 +12,7 @@ UNIT = "sayld.service"
 MARKER = "# Written by `sayl service install`; `sayl service uninstall` removes it."
 PACKAGED_UNIT = Path("/usr/lib/systemd/user") / UNIT
 PACKAGED_SAYLD = "/usr/bin/sayld"
+RESTORE_FLAG = "--restore-proxy"  # sayld restores the system proxy and exits.
 PACKAGED_RUNTIME = Path("/usr/lib/sayl/runtime")
 # XAUTHORITY: X11 clients (xclip, python-xlib) need it under the unit as well.
 SESSION_VARIABLES = (
@@ -48,6 +49,8 @@ PartOf=graphical-session.target
 [Service]
 Type=exec
 ExecStart={" ".join(quote(word) for word in command)}
+# Also after a crash or SIGKILL: never leave the desktop's proxy pointing at a dead sayld.
+ExecStopPost={" ".join(quote(word) for word in [*command, RESTORE_FLAG])}
 Restart=on-failure
 RestartSec=5
 # sayld stops aria2c and sayl-capture itself and restores the system proxy first.

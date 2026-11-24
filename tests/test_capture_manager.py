@@ -5,7 +5,7 @@ import hashlib
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 import pytest
@@ -144,30 +144,78 @@ async def test_uninstall_removes_the_ca(stack: Stack) -> None:
     assert (status["state"], status["ca"]) == ("off", None)
 
 
-async def test_stopping_sayld_restores_the_system_proxy(tmp_path: Path) -> None:
-    calls: list[str] = []
+class FakeProxy:
+    """Stands in for SystemProxy, so no test can touch the person's desktop settings."""
 
-    class FakeProxy:
-        def enable(self, port: int) -> Result:
-            calls.append(f"enable {port}")
-            return Result(Desktop.GNOME, True)
+    calls: ClassVar[list[str]] = []
+    stale = False  # Pretend a killed sayld left its setting behind.
 
-        def disable(self) -> Result:
-            calls.append("disable")
-            return Result(Desktop.GNOME, True)
+    def __init__(self, state_dir: Path, env: Any) -> None:
+        self.on = FakeProxy.stale
 
-        def active(self) -> bool:
-            return bool(calls) and calls[-1].startswith("enable")
+    def enable(self, port: int, pac_url: str) -> Result:
+        FakeProxy.calls.append(f"enable {port} {pac_url}")
+        self.on = True
+        return Result(Desktop.GNOME, True)
 
+    def disable(self) -> Result:
+        FakeProxy.calls.append("disable" if self.on else "disable (nothing)")
+        applied, self.on = self.on, False
+        return Result(Desktop.GNOME, applied)
+
+    def active(self) -> bool:
+        return self.on
+
+
+@pytest.fixture
+def fake_proxy(monkeypatch: pytest.MonkeyPatch) -> type[FakeProxy]:
+    monkeypatch.setattr("daemon.capture.manager.SystemProxy", FakeProxy)
+    monkeypatch.setattr(FakeProxy, "calls", [])
+    monkeypatch.setattr(FakeProxy, "stale", False)
+    return FakeProxy
+
+
+async def test_stopping_sayld_restores_the_system_proxy(
+    tmp_path: Path, fake_proxy: type[FakeProxy]
+) -> None:
     async with running_stack(tmp_path) as stack:
         capture = manager(stack)
-        capture.proxy = FakeProxy()  # type: ignore[assignment]
         status = (
             await stack.client.put("/capture", json={"enabled": True, "system_proxy": True})
         ).json()
         assert status["system_proxy"] is True
-        assert calls == [f"enable {capture.config.capture_port}"]
-    assert calls[-1] == "disable"  # sayld stopped: browsing must not hit a dead port.
+        assert fake_proxy.calls == [f"enable {capture.config.capture_port} {capture.pac_url}"]
+    assert fake_proxy.calls[-1] == "disable"  # sayld stopped: nothing may point at a dead port.
+
+
+async def test_a_stale_setting_is_restored_on_startup(
+    tmp_path: Path, fake_proxy: type[FakeProxy]
+) -> None:
+    fake_proxy.stale = True  # The last sayld was killed with the proxy applied.
+    async with running_stack(tmp_path) as stack:
+        assert fake_proxy.calls == ["disable"]  # First thing, before capture is even asked for.
+        assert manager(stack).proxy.active() is False
+
+
+async def test_pac_file_needs_its_secret_not_the_token(
+    tmp_path: Path, fake_proxy: type[FakeProxy]
+) -> None:
+    async with running_stack(tmp_path, capture_passthrough=("opt-in.test",)) as stack:
+        capture = manager(stack)
+        await stack.client.post("/capture/bypass", json={"host": "pinned.example"})
+        async with httpx.AsyncClient(trust_env=False) as browser:  # No bearer token.
+            answer = await browser.get(capture.pac_url)
+            wrong = await browser.get(f"http://127.0.0.1:{stack.port}/capture/pac/guess.pac")
+        assert answer.status_code == 200
+        assert answer.headers["content-type"].startswith("application/x-ns-proxy-autoconfig")
+        script = answer.text
+        assert f'"PROXY 127.0.0.1:{capture.config.capture_port}; DIRECT"' in script
+        for host in ("anthropic.com", "claude.ai", "opt-in.test", "pinned.example"):
+            assert f'"{host}"' in script
+        assert "github.com" not in script
+        assert wrong.status_code == 404
+        secret = tmp_path / ".local/share/sayl/capture/pac-secret"
+        assert secret.stat().st_mode & 0o777 == 0o600
 
 
 async def test_sayl_capture_stops_when_sayld_is_gone(monkeypatch: pytest.MonkeyPatch) -> None:

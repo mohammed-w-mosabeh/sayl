@@ -101,12 +101,41 @@ def test_path_entries_are_checked_per_request() -> None:
     assert bypassed("https://github.com/login", ["github.com/login/"])
     assert not bypassed("https://github.com/loginx", ["github.com/login"])
     assert not bypassed("https://github.com/owner/repo", ["github.com/login"])
-    assert bypassed("https://www.paypal.com/x", DEFAULT_BYPASS)
+    assert bypassed("https://api.anthropic.com/v1/messages", DEFAULT_BYPASS)
     assert not bypassed("https://example.com/x", DEFAULT_BYPASS)
 
 
-def test_default_bypass_compiles() -> None:
+def test_default_bypass_is_only_anthropic_and_claude() -> None:
+    """Every other host must stay capturable: more passthrough is opt-in."""
+    assert DEFAULT_BYPASS == ("anthropic.com", "claude.ai")
     patterns = ignore_hosts([*DEFAULT_BYPASS, "", "  "])
-    assert len(patterns) == len(DEFAULT_BYPASS) - 1  # The path entry is per request.
+    assert len(patterns) == len(DEFAULT_BYPASS)
     for pattern in patterns:
         re.compile(pattern)
+
+
+PASSED_THROUGH = [
+    "api.anthropic.com", "anthropic.com", "console.anthropic.com", "mcp-proxy.anthropic.com",
+    "claude.ai", "downloads.claude.ai", "API.ANTHROPIC.COM",
+]  # fmt: skip
+STILL_INTERCEPTED = [
+    # Download sites Sayl must keep capturing: never passed through by default.
+    "github.com", "objects.githubusercontent.com", "raw.githubusercontent.com", "ghcr.io",
+    "registry.npmjs.org", "npmjs.org", "pypi.org", "files.pythonhosted.org", "docker.io",
+    "download.docker.com", "dl.google.com", "download.mozilla.org", "deb.debian.org",
+    "www.youtube.com", "rr1---sn-25auxa-b156.googlevideo.com", "example.com",
+    # Look-alikes of the default entries.
+    "anthropic.com.evil.test", "notanthropic.com", "anthropic.co", "claude.ai.evil.test",
+    "evilclaude.ai", "claude.aix", "anthropic-com.test",
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("host", PASSED_THROUGH)
+def test_default_passthrough_hosts(host: str) -> None:
+    assert any(re.match(p, f"{host}:443", re.IGNORECASE) for p in ignore_hosts(DEFAULT_BYPASS))
+
+
+@pytest.mark.parametrize("host", STILL_INTERCEPTED)
+def test_every_other_host_is_still_intercepted(host: str) -> None:
+    assert not any(re.match(p, f"{host}:443") for p in ignore_hosts(DEFAULT_BYPASS))
+    assert not bypassed(f"https://{host}/file.zip", DEFAULT_BYPASS)

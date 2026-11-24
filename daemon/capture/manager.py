@@ -2,7 +2,8 @@
 
 Settings: `capture_enabled`, `capture_system_proxy` (both default false), `capture_bypass`
 (extra hosts), `capture_threshold` (bytes). The system proxy only ever points at a proxy that is
-listening: it is switched on after the port answers and restored when sayld stops.
+listening: it is switched on after the port answers and restored when sayld stops. A setting left
+behind by a sayld that was killed is restored first thing on the next start.
 """
 
 import asyncio
@@ -15,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from daemon.capture import ca
+from daemon.capture import ca, detect, pac
 from daemon.capture.sysproxy import SystemProxy
 from daemon.capture.trust import Report, Trust
 from daemon.config import Config, Paths
@@ -82,6 +83,18 @@ class CaptureManager:
 
     async def start(self) -> None:
         await self.notifier.start(self.env)
+        try:
+            if fixed := await asyncio.to_thread(ca.harden, self.directory):
+                log.warning("tightened permissions on %s", ", ".join(map(str, fixed)))
+        except PermissionError as error:
+            log.error("CA directory is unsafe, capture stays off: %s", error)
+            self.state, self.error = "failed", str(error)
+            await asyncio.to_thread(self.proxy.disable)
+            return
+        if await asyncio.to_thread(self.proxy.active):
+            # Only a sayld that died without stopping leaves this: put the original back first.
+            result = await asyncio.to_thread(self.proxy.disable)
+            log.warning("restored a stale system proxy setting: %s", result.applied)
         settings = await run(self.store.settings)
         if settings.get(ENABLED) is True:
             await self.apply(enabled=True, system_proxy=settings.get(SYSTEM_PROXY) is True)
@@ -109,7 +122,9 @@ class CaptureManager:
             if not await self._wait_ready():
                 return self.status()
             if system_proxy:
-                result = await asyncio.to_thread(self.proxy.enable, self.config.capture_port)
+                result = await asyncio.to_thread(
+                    self.proxy.enable, self.config.capture_port, self.pac_url
+                )
                 self.error = "" if result.applied else result.detail
             else:
                 await asyncio.to_thread(self.proxy.disable)
@@ -184,6 +199,23 @@ class CaptureManager:
         self.state = "failed"
         self.error = self.error or f"sayl-capture did not listen on {self.config.capture_port}"
         return False
+
+    # Proxy auto-config
+
+    @property
+    def pac_secret(self) -> str:
+        return pac.secret(self.state_dir)
+
+    @property
+    def pac_url(self) -> str:
+        return pac.url(self.config.port, self.pac_secret)
+
+    async def pac_script(self) -> str:
+        settings = await run(self.store.settings)
+        user = settings.get(BYPASS)
+        entries = [str(item) for item in user] if isinstance(user, list) else []
+        bypass = [*detect.DEFAULT_BYPASS, *self.config.capture_passthrough, *entries]
+        return pac.script(self.config.capture_port, bypass)
 
     # Certificate authority
 

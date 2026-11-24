@@ -3,6 +3,10 @@
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+- Fixed: with capture on, terminals and command-line tools (curl, git, uv, npm, API clients) were sent through the capture proxy and failed with "unable to get local issuer certificate". GNOME Terminal exports the desktop's *manual* proxy as `https_proxy`; Sayl now uses *automatic* mode with a PAC file, which only browsers follow and which falls back to direct if the proxy is down.
+- Passthrough: only `anthropic.com` and `claude.ai` are built in (the old sign-in, bank and update host list is gone, so those sites can be captured); add more with `capture_passthrough` in `config.toml`. The automatic bypass now needs an explicit "unknown CA" alert from the client.
+- The proxy setting is restored at the next start after a crash, and by the systemd unit (`sayld --restore-proxy`) after any exit. The CA directory's permissions are repaired at every start.
+- `sayl doctor` checks capture: listener, system proxy mode, proxy variables in the shell, CA trust, private key permissions, and that `api.anthropic.com` passes through untouched.
 
 ## [1.0.0] - 2026-11-14
 - Packages: a `.deb` and an AppImage, each with its own Python 3.12 runtime (python-build-standalone, locked dependencies with hashes) in `/usr/lib/sayl/runtime`. The `.deb` adds `sayl`, `sayld`, and the `sayld.service` user unit, and depends on aria2 and ffmpeg; `Sayl.AppImage sayl ...` and `Sayl.AppImage sayld` run the bundled CLI and daemon. Built on Ubuntu 22.04 (glibc 2.35 or newer), contents checked for secrets, and smoke-tested in Debian 13 and Ubuntu 24.04 and 22.04.

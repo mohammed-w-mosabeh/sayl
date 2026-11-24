@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
+from cli.capture_doctor import capture_checks
 from cli.client import Client, ClientError
 from cli.doctor import Status, has_failures, run_checks
 from cli.service import Service, ServiceError, default_service, target
@@ -737,8 +738,9 @@ def capture_uninstall() -> None:
 
 @app.command()
 def doctor() -> None:
-    """Check aria2c, ffmpeg, the JS runtime, capture tools, and the session type."""
-    checks = run_checks()
+    """Check tools, the session, and capture: listener, system proxy, CA, passthrough."""
+    paths = Paths.from_env()
+    checks = [*run_checks(), *capture_checks(paths=paths, config=load_config(paths))]
     table = Table("Check", "Status", "Detail", "Fix")
     for check in checks:
         style = _STYLES[check.status]

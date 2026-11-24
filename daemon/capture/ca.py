@@ -115,6 +115,39 @@ def create(directory: Path, now: datetime.datetime | None = None) -> Authority:
     return Authority(directory, certificate)
 
 
+def harden(directory: Path) -> list[Path]:
+    """Directory 0700, everything but the public certificate 0600, all owned by us.
+
+    Repairs a looser mode (an old umask, a copied backup) and returns what it changed. Refuses a
+    directory owned by someone else: whoever owns it could read or swap the private key.
+    """
+    if not directory.exists():
+        return []
+    changed: list[Path] = []
+    uid = os.geteuid()
+    for path in [directory, *sorted(directory.iterdir())]:
+        info = path.lstat()
+        if info.st_uid != uid:
+            raise PermissionError(f"{path} is owned by uid {info.st_uid}, not {uid}")
+        if path.is_symlink():
+            raise PermissionError(f"{path} is a symbolic link")
+        if path == directory:
+            wanted = 0o700
+        elif path.name == CERT_FILE:
+            wanted = 0o644
+        else:
+            wanted = 0o600
+        if info.st_mode & 0o777 != wanted:
+            path.chmod(wanted)
+            changed.append(path)
+    return changed
+
+
+def private_key_mode(directory: Path) -> int | None:
+    file = directory / KEY_FILE
+    return file.stat().st_mode & 0o777 if file.exists() else None
+
+
 def load(directory: Path) -> Authority | None:
     file = directory / CERT_FILE
     if not file.exists() or not (directory / KEY_FILE).exists():
@@ -123,7 +156,9 @@ def load(directory: Path) -> Authority | None:
 
 
 def ensure(directory: Path) -> Authority:
-    return load(directory) or create(directory)
+    authority = load(directory) or create(directory)
+    harden(directory)
+    return authority
 
 
 def remove(directory: Path) -> None:

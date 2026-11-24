@@ -182,17 +182,30 @@ async def test_bypassed_paths_and_settings() -> None:
     assert recorder.posts == []
 
 
+UNKNOWN_CA = (
+    "The client does not trust the proxy's certificate for pinned.example (tlsv1 alert unknown ca)"
+)
+HUNG_UP = (
+    "The client disconnected during the handshake. If this happens consistently for x, "
+    "this may indicate that the client does not trust the proxy's certificate."
+)
+
+
 async def test_tls_refusals_bypass_one_site_but_not_a_whole_browser(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     recorder = Recorder()
     addon = capture(recorder)
 
-    def refused(host: str) -> Any:
+    def refused(host: str, error: str = UNKNOWN_CA) -> Any:
         data = type("Data", (), {})()
         data.context = type("Context", (), {"client": type("Client", (), {"sni": host})()})()
+        data.conn = type("Conn", (), {"error": error})()
         return data
 
+    addon.tls_failed_client(refused("hungup.example", HUNG_UP))  # Says nothing about the CA.
+    addon.tls_failed_client(refused("other.example", "OpenSSL Error('no shared cipher')"))
+    assert not addon.tasks
     addon.tls_failed_client(refused("pinned.example"))
     await settle(addon)
     assert recorder.posts == [("/capture/bypass", {"host": "pinned.example", "reason": "tls"})]

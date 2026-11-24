@@ -1,4 +1,5 @@
-"""REST API and WebSocket events. Every route requires the bearer token."""
+"""REST API and WebSocket events. Every route requires the bearer token, except the PAC file,
+which browsers fetch without one and which a random secret in its path protects instead."""
 
 import asyncio
 import contextlib
@@ -13,6 +14,7 @@ from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 from starlette.requests import ClientDisconnect
@@ -809,6 +811,18 @@ def create_app(services: Services) -> FastAPI:
     @app.post("/capture/media", dependencies=auth, status_code=204)
     async def capture_report_media(body: MediaReport) -> None:
         capture().report_media(body.model_dump())
+
+    @app.get("/capture/pac/{value}.pac", include_in_schema=False)
+    async def capture_pac(value: str) -> PlainTextResponse:
+        """The PAC file. Browsers send no token, so the secret in the path stands in for one."""
+        manager = capture()
+        if not secrets.compare_digest(value.encode(), manager.pac_secret.encode()):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
+        return PlainTextResponse(
+            await manager.pac_script(),
+            media_type="application/x-ns-proxy-autoconfig",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.post("/capture/bypass", dependencies=auth, status_code=204)
     async def capture_bypass(body: BypassReport) -> None:

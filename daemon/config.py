@@ -55,6 +55,8 @@ class Config:
     host: str = "127.0.0.1"
     port: int = 6971
     capture_port: int = 6972
+    # Opt-in hosts never intercepted, added to the built-in ones (detect.DEFAULT_BYPASS).
+    capture_passthrough: tuple[str, ...] = ()
     download_dir: str = ""
     max_concurrent: int = 3
     max_retries: int = 5
@@ -72,6 +74,7 @@ class Config:
         if self.host != "127.0.0.1":
             raise ValueError("all local services bind to 127.0.0.1 only")
         object.__setattr__(self, "dev_origins", tuple(self.dev_origins))
+        object.__setattr__(self, "capture_passthrough", tuple(map(str, self.capture_passthrough)))
         for origin in self.dev_origins:
             if not LOOPBACK_ORIGIN.fullmatch(origin):
                 raise ValueError(f"dev_origins accepts only http://localhost:<port>, not {origin}")

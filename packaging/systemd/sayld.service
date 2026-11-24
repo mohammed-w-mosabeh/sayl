@@ -7,6 +7,8 @@ PartOf=graphical-session.target
 [Service]
 Type=exec
 ExecStart="/usr/bin/sayld"
+# Also after a crash or SIGKILL: never leave the desktop's proxy pointing at a dead sayld.
+ExecStopPost="/usr/bin/sayld" "--restore-proxy"
 Restart=on-failure
 RestartSec=5
 # sayld stops aria2c and sayl-capture itself and restores the system proxy first.

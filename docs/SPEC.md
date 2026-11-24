@@ -102,7 +102,9 @@ GNOME via `gsettings org.gnome.system.proxy`, KDE via `kwriteconfig5/6`, plus pr
   2. Change the exact pin in `pyproject.toml` and `SUPPORTED_VERSION` in `mitm_adapter.py` together, then run `uv lock`.
   3. Run the single-use lab matrix locally: `uv run python poc/lab/run_matrix.py` for each browser and protocol.
   4. Merge only when every CI matrix cell is green. If it cannot go green, stay on the pinned version and open an issue.
-- **Bypass list** (defaults + user editable): banking and login domains, OS update mirrors, and any host that fails the TLS handshake through the proxy (auto-add after a failure, notify once).
+- **System proxy:** GNOME gets `auto` mode with a PAC file from sayld (`GET /capture/pac/<secret>.pac`, no token, a random 0600 secret in the path), never `manual` mode, because GNOME Terminal exports manual mode as `http_proxy`/`https_proxy` to every shell and command-line clients do not trust the CA. The PAC file sends loopback and passthrough hosts DIRECT and everything else to `PROXY 127.0.0.1:<capture_port>; DIRECT`, so a dead proxy fails open. KDE keeps `kioslaverc` manual mode (Konsole exports nothing). Sayl adds no firewall rules or hosts entries. The previous setting is restored on stop, at the next start if a killed sayld left it, and by the unit's `ExecStopPost=sayld --restore-proxy`.
+- **Passthrough (bypass) list:** mitmproxy `ignore_hosts`: the SNI is read from the ClientHello before TLS is terminated and a matching connection is spliced raw to the real server, never re-signed. Built in: only `anthropic.com` and `claude.ai` (with subdomains), so every download site stays capturable. Opt-in: `capture_passthrough` in `config.toml` and the `capture_bypass` setting. Auto-add, notify once: a host whose client sends an "unknown CA" or "bad certificate" alert, while the CA is trusted somewhere and at most three hosts a minute fail.
+- **CA key:** directory 0700, every file but the public `sayl-ca.crt` 0600, owned by the user, repaired at every start; a symlink or a foreign owner keeps capture off. sayl-capture runs with umask 077.
 
 ## Clipboard
 
